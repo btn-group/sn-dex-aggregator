@@ -3,17 +3,13 @@ use crate::msg::{
     space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success,
 };
 use crate::rand::sha_256;
-use crate::state::{
-    read_allowance, read_viewing_key, write_allowance, write_viewing_key, Config, Constants,
-    ReadonlyBalances, ReadonlyConfig,
-};
-use crate::transaction_history::{get_transfers, get_txs};
+use crate::state::{read_viewing_key, write_viewing_key, Config, Constants, ReadonlyConfig};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 /// This contract implements SNIP-20 standard:
 /// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
 use cosmwasm_std::{
     to_binary, Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, QueryResult, StdError, StdResult, Storage, Uint128,
+    Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage,
 };
 use secret_toolkit::permit::{validate, Permission, Permit};
 
@@ -26,37 +22,15 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    // Check name, symbol, decimals
-    if !is_valid_name(&msg.name) {
-        return Err(StdError::generic_err(
-            "Name is not in the expected format (3-30 UTF-8 bytes)",
-        ));
-    }
-    if !is_valid_symbol(&msg.symbol) {
-        return Err(StdError::generic_err(
-            "Ticker symbol is not in expected format [A-Z]{3,6}",
-        ));
-    }
-    if msg.decimals > 18 {
-        return Err(StdError::generic_err("Decimals must not exceed 18"));
-    }
-
     let admin = msg.admin.unwrap_or(env.message.sender);
     let _canon_admin = deps.api.canonical_address(&admin)?;
-
-    let total_supply: u128 = 0;
     let prng_seed_hashed = sha_256(&msg.prng_seed.0);
 
     let mut config = Config::from_storage(&mut deps.storage);
     config.set_constants(&Constants {
-        name: msg.name,
-        symbol: msg.symbol,
-        decimals: msg.decimals,
-        admin: admin.clone(),
-        prng_seed: prng_seed_hashed.to_vec(),
         contract_address: env.contract.address,
+        prng_seed: prng_seed_hashed.to_vec(),
     })?;
-    config.set_total_supply(total_supply);
     Ok(InitResponse::default())
 }
 
@@ -78,7 +52,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     let response = match msg {
         HandleMsg::CreateViewingKey { entropy, .. } => try_create_key(deps, env, entropy),
         HandleMsg::SetViewingKey { key, .. } => try_set_key(deps, env, key),
-        HandleMsg::ChangeAdmin { address, .. } => change_admin(deps, env, address),
     };
 
     pad_response(response)
@@ -105,16 +78,6 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
 
     // Permit validated! We can now execute the query.
     match query {
-        QueryWithPermit::Balance {} => {
-            if !permit.check_permission(&Permission::Balance) {
-                return Err(StdError::generic_err(format!(
-                    "No permission to query balance, got permissions {:?}",
-                    permit.params.permissions
-                )));
-            }
-
-            query_balance(deps, &account)
-        }
         QueryWithPermit::TransferHistory { page, page_size } => {
             if !permit.check_permission(&Permission::History) {
                 return Err(StdError::generic_err(format!(
@@ -124,33 +87,6 @@ fn permit_queries<S: Storage, A: Api, Q: Querier>(
             }
 
             query_transfers(deps, &account, page.unwrap_or(0), page_size)
-        }
-        QueryWithPermit::TransactionHistory { page, page_size } => {
-            if !permit.check_permission(&Permission::History) {
-                return Err(StdError::generic_err(format!(
-                    "No permission to query history, got permissions {:?}",
-                    permit.params.permissions
-                )));
-            }
-
-            query_transactions(deps, &account, page.unwrap_or(0), page_size)
-        }
-        QueryWithPermit::Allowance { owner, spender } => {
-            if !permit.check_permission(&Permission::Allowance) {
-                return Err(StdError::generic_err(format!(
-                    "No permission to query allowance, got permissions {:?}",
-                    permit.params.permissions
-                )));
-            }
-
-            if account != owner && account != spender {
-                return Err(StdError::generic_err(format!(
-                    "Cannot query allowance. Requires permit for either owner {:?} or spender {:?}, got permit for {:?}",
-                    owner.as_str(), spender.as_str(), account.as_str()
-                )));
-            }
-
-            query_allowance(deps, owner, spender)
         }
     }
 }
@@ -173,21 +109,12 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
         } else if key.check_viewing_key(expected_key.unwrap().as_slice()) {
             return match msg {
                 // Base
-                QueryMsg::Balance { address, .. } => query_balance(deps, &address),
                 QueryMsg::TransferHistory {
                     address,
                     page,
                     page_size,
                     ..
                 } => query_transfers(deps, &address, page.unwrap_or(0), page_size),
-                QueryMsg::TransactionHistory {
-                    address,
-                    page,
-                    page_size,
-                    ..
-                } => query_transactions(deps, &address, page.unwrap_or(0), page_size),
-                QueryMsg::Allowance { owner, spender, .. } => query_allowance(deps, owner, spender),
-                _ => panic!("This query type does not require authentication"),
             };
         }
     }
@@ -203,61 +130,14 @@ pub fn query_transfers<S: Storage, A: Api, Q: Querier>(
     page: u32,
     page_size: u32,
 ) -> StdResult<Binary> {
-    let address = deps.api.canonical_address(account)?;
-    let (txs, total) = get_transfers(&deps.api, &deps.storage, &address, page, page_size)?;
+    // let address = deps.api.canonical_address(account)?;
+    // let (txs, total) = get_transfers(&deps.api, &deps.storage, &address, page, page_size)?;
 
     let result = QueryAnswer::TransferHistory {
-        txs,
-        total: Some(total),
+        txs: vec![],
+        total: Some(123),
     };
     to_binary(&result)
-}
-
-pub fn query_transactions<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    account: &HumanAddr,
-    page: u32,
-    page_size: u32,
-) -> StdResult<Binary> {
-    let address = deps.api.canonical_address(account)?;
-    let (txs, total) = get_txs(&deps.api, &deps.storage, &address, page, page_size)?;
-
-    let result = QueryAnswer::TransactionHistory {
-        txs,
-        total: Some(total),
-    };
-    to_binary(&result)
-}
-
-pub fn query_balance<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    account: &HumanAddr,
-) -> StdResult<Binary> {
-    let address = deps.api.canonical_address(account)?;
-
-    let amount = Uint128(ReadonlyBalances::from_storage(&deps.storage).account_amount(&address));
-    let response = QueryAnswer::Balance { amount };
-    to_binary(&response)
-}
-
-fn change_admin<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    address: HumanAddr,
-) -> StdResult<HandleResponse> {
-    let mut config = Config::from_storage(&mut deps.storage);
-
-    check_if_admin(&config, &env.message.sender)?;
-
-    let mut consts = config.constants()?;
-    consts.admin = address;
-    config.set_constants(&consts)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::ChangeAdmin { status: Success })?),
-    })
 }
 
 pub fn try_set_key<S: Storage, A: Api, Q: Querier>(
@@ -297,82 +177,41 @@ pub fn try_create_key<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-pub fn query_allowance<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    owner: HumanAddr,
-    spender: HumanAddr,
-) -> StdResult<Binary> {
-    let owner_address = deps.api.canonical_address(&owner)?;
-    let spender_address = deps.api.canonical_address(&spender)?;
+pub fn get_transfers<A: Api, S: ReadonlyStorage>(
+    api: &A,
+    storage: &S,
+    for_address: &CanonicalAddr,
+    page: u32,
+    page_size: u32,
+) -> StdResult<HandleResponse> {
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: None,
+    })
+    // let store =
+    //     ReadonlyPrefixedStorage::multilevel(&[PREFIX_TRANSFERS, for_address.as_slice()], storage);
 
-    let allowance = read_allowance(&deps.storage, &owner_address, &spender_address)?;
+    // // Try to access the storage of transfers for the account.
+    // // If it doesn't exist yet, return an empty list of transfers.
+    // let store = AppendStore::<StoredLegacyTransfer, _, _>::attach(&store);
+    // let store = if let Some(result) = store {
+    //     result?
+    // } else {
+    //     return Ok((vec![], 0));
+    // };
 
-    let response = QueryAnswer::Allowance {
-        owner,
-        spender,
-        allowance: Uint128(allowance.amount),
-        expiration: allowance.expiration,
-    };
-    to_binary(&response)
-}
+    // // Take `page_size` txs starting from the latest tx, potentially skipping `page * page_size`
+    // // txs from the start.
+    // let transfer_iter = store
+    //     .iter()
+    //     .rev()
+    //     .skip((page * page_size) as _)
+    //     .take(page_size as _);
 
-fn insufficient_allowance(allowance: u128, required: u128) -> StdError {
-    StdError::generic_err(format!(
-        "insufficient allowance: allowance={}, required={}",
-        allowance, required
-    ))
-}
-
-fn use_allowance<S: Storage>(
-    storage: &mut S,
-    env: &Env,
-    owner: &CanonicalAddr,
-    spender: &CanonicalAddr,
-    amount: u128,
-) -> StdResult<()> {
-    let mut allowance = read_allowance(storage, owner, spender)?;
-
-    if allowance.is_expired_at(&env.block) {
-        return Err(insufficient_allowance(0, amount));
-    }
-    if let Some(new_allowance) = allowance.amount.checked_sub(amount) {
-        allowance.amount = new_allowance;
-    } else {
-        return Err(insufficient_allowance(allowance.amount, amount));
-    }
-
-    write_allowance(storage, owner, spender, allowance)?;
-
-    Ok(())
-}
-
-fn is_admin<S: Storage>(config: &Config<S>, account: &HumanAddr) -> StdResult<bool> {
-    let consts = config.constants()?;
-    if &consts.admin != account {
-        return Ok(false);
-    }
-
-    Ok(true)
-}
-
-fn check_if_admin<S: Storage>(config: &Config<S>, account: &HumanAddr) -> StdResult<()> {
-    if !is_admin(config, account)? {
-        return Err(StdError::generic_err(
-            "This is an admin command. Admin commands can only be run from admin address",
-        ));
-    }
-
-    Ok(())
-}
-
-fn is_valid_name(name: &str) -> bool {
-    let len = name.len();
-    (3..=30).contains(&len)
-}
-
-fn is_valid_symbol(symbol: &str) -> bool {
-    let len = symbol.len();
-    let len_is_valid = (3..=6).contains(&len);
-
-    len_is_valid && symbol.bytes().all(|byte| (b'A'..=b'Z').contains(&byte))
+    // // The `and_then` here flattens the `StdResult<StdResult<RichTx>>` to an `StdResult<RichTx>`
+    // let transfers: StdResult<Vec<Tx>> = transfer_iter
+    //     .map(|tx| tx.map(|tx| tx.into_humanized(api)).and_then(|x| x))
+    //     .collect();
+    // transfers.map(|txs| (txs, store.len() as u64))
 }
