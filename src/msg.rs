@@ -6,19 +6,12 @@ use schemars::JsonSchema;
 use secret_toolkit::permit::Permit;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
-pub struct InitialBalance {
-    pub address: HumanAddr,
-    pub amount: Uint128,
-}
-
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InitMsg {
     pub name: String,
     pub admin: Option<HumanAddr>,
     pub symbol: String,
     pub decimals: u8,
-    pub initial_balances: Option<Vec<InitialBalance>>,
     pub prng_seed: Binary,
 }
 

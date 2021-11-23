@@ -5,10 +5,10 @@ use crate::msg::{
 };
 use crate::rand::sha_256;
 use crate::state::{
-    read_allowance, read_viewing_key, write_allowance, write_viewing_key, Balances, Config,
-    Constants, ReadonlyBalances, ReadonlyConfig,
+    read_allowance, read_viewing_key, write_allowance, write_viewing_key, Config, Constants,
+    ReadonlyBalances, ReadonlyConfig,
 };
-use crate::transaction_history::{get_transfers, get_txs, store_mint};
+use crate::transaction_history::{get_transfers, get_txs};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 /// This contract implements SNIP-20 standard:
 /// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
@@ -43,35 +43,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     }
 
     let admin = msg.admin.unwrap_or(env.message.sender);
-    let canon_admin = deps.api.canonical_address(&admin)?;
+    let _canon_admin = deps.api.canonical_address(&admin)?;
 
-    let mut total_supply: u128 = 0;
-    {
-        let initial_balances = msg.initial_balances.unwrap_or_default();
-        for balance in initial_balances {
-            let balance_address = deps.api.canonical_address(&balance.address)?;
-            let amount = balance.amount.u128();
-            let mut balances = Balances::from_storage(&mut deps.storage);
-            balances.set_account_balance(&balance_address, amount);
-            if let Some(new_total_supply) = total_supply.checked_add(amount) {
-                total_supply = new_total_supply;
-            } else {
-                return Err(StdError::generic_err(
-                    "The sum of all initial balances exceeds the maximum possible total supply",
-                ));
-            }
-            store_mint(
-                &mut deps.storage,
-                &canon_admin,
-                &balance_address,
-                balance.amount,
-                msg.symbol.clone(),
-                Some("Initial Balance".to_string()),
-                &env.block,
-            )?;
-        }
-    }
-
+    let total_supply: u128 = 0;
     let prng_seed_hashed = sha_256(&msg.prng_seed.0);
 
     let mut config = Config::from_storage(&mut deps.storage);

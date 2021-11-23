@@ -24,15 +24,6 @@
       "format": "uint8",
       "minimum": 0.0
     },
-    "initial_balances": {
-      "type": [
-        "array",
-        "null"
-      ],
-      "items": {
-        "$ref": "#/definitions/InitialBalance"
-      }
-    },
     "name": {
       "type": "string"
     },
@@ -49,24 +40,6 @@
       "type": "string"
     },
     "HumanAddr": {
-      "type": "string"
-    },
-    "InitialBalance": {
-      "type": "object",
-      "required": [
-        "address",
-        "amount"
-      ],
-      "properties": {
-        "address": {
-          "$ref": "#/definitions/HumanAddr"
-        },
-        "amount": {
-          "$ref": "#/definitions/Uint128"
-        }
-      }
-    },
-    "Uint128": {
       "type": "string"
     }
   }
