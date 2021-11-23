@@ -76,42 +76,9 @@
           }
         }
       }
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_contract_status"
-      ],
-      "properties": {
-        "set_contract_status": {
-          "type": "object",
-          "required": [
-            "level"
-          ],
-          "properties": {
-            "level": {
-              "$ref": "#/definitions/ContractStatusLevel"
-            },
-            "padding": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        }
-      }
     }
   ],
   "definitions": {
-    "ContractStatusLevel": {
-      "type": "string",
-      "enum": [
-        "normal_run",
-        "stop_all_but_redeems",
-        "stop_all"
-      ]
-    },
     "HumanAddr": {
       "type": "string"
     }

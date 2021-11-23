@@ -1,7 +1,6 @@
 use crate::msg::QueryWithPermit;
 use crate::msg::{
-    space_pad, ContractStatusLevel, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg,
-    ResponseStatus::Success,
+    space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success,
 };
 use crate::rand::sha_256;
 use crate::state::{
@@ -14,7 +13,7 @@ use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 /// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
 use cosmwasm_std::{
     to_binary, Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, Uint128,
+    Querier, QueryResult, StdError, StdResult, Storage, Uint128,
 };
 use secret_toolkit::permit::{validate, Permission, Permit};
 
@@ -58,8 +57,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         contract_address: env.contract.address,
     })?;
     config.set_total_supply(total_supply);
-    config.set_contract_status(ContractStatusLevel::NormalRun);
-
     Ok(InitResponse::default())
 }
 
@@ -82,7 +79,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::CreateViewingKey { entropy, .. } => try_create_key(deps, env, entropy),
         HandleMsg::SetViewingKey { key, .. } => try_set_key(deps, env, key),
         HandleMsg::ChangeAdmin { address, .. } => change_admin(deps, env, address),
-        HandleMsg::SetContractStatus { level, .. } => set_contract_status(deps, env, level),
     };
 
     pad_response(response)
@@ -90,7 +86,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
 pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryMsg) -> QueryResult {
     match msg {
-        QueryMsg::ContractStatus {} => query_contract_status(&deps.storage),
         QueryMsg::WithPermit { permit, query } => permit_queries(deps, permit, query),
         _ => viewing_keys_queries(deps, msg),
     }
@@ -202,14 +197,6 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn query_contract_status<S: ReadonlyStorage>(storage: &S) -> QueryResult {
-    let config = ReadonlyConfig::from_storage(storage);
-
-    to_binary(&QueryAnswer::ContractStatus {
-        status: config.contract_status(),
-    })
-}
-
 pub fn query_transfers<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     account: &HumanAddr,
@@ -307,26 +294,6 @@ pub fn try_create_key<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::CreateViewingKey { key })?),
-    })
-}
-
-fn set_contract_status<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    status_level: ContractStatusLevel,
-) -> StdResult<HandleResponse> {
-    let mut config = Config::from_storage(&mut deps.storage);
-
-    check_if_admin(&config, &env.message.sender)?;
-
-    config.set_contract_status(status_level);
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::SetContractStatus {
-            status: Success,
-        })?),
     })
 }
 

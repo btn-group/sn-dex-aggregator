@@ -58,25 +58,6 @@
           }
         }
       }
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_contract_status"
-      ],
-      "properties": {
-        "set_contract_status": {
-          "type": "object",
-          "required": [
-            "status"
-          ],
-          "properties": {
-            "status": {
-              "$ref": "#/definitions/ResponseStatus"
-            }
-          }
-        }
-      }
     }
   ],
   "definitions": {
