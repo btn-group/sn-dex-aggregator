@@ -1,13 +1,10 @@
 #![allow(clippy::field_reassign_with_default)] // This is triggered in `#[derive(JsonSchema)]`
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use crate::batch;
 use crate::transaction_history::{RichTx, Tx};
 use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{Binary, HumanAddr, StdError, StdResult, Uint128};
+use schemars::JsonSchema;
 use secret_toolkit::permit::Permit;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct InitialBalance {
@@ -23,179 +20,17 @@ pub struct InitMsg {
     pub decimals: u8,
     pub initial_balances: Option<Vec<InitialBalance>>,
     pub prng_seed: Binary,
-    pub config: Option<InitConfig>,
-}
-
-impl InitMsg {
-    pub fn config(&self) -> InitConfig {
-        self.config.clone().unwrap_or_default()
-    }
-}
-
-/// This type represents optional configuration values which can be overridden.
-/// All values are optional and have defaults which are more private by default,
-/// but can be overridden if necessary
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
-#[serde(rename_all = "snake_case")]
-pub struct InitConfig {
-    /// Indicates whether the total supply is public or should be kept secret.
-    /// default: False
-    public_total_supply: Option<bool>,
-    /// Indicates whether deposit functionality should be enabled
-    /// default: False
-    enable_deposit: Option<bool>,
-    /// Indicates whether redeem functionality should be enabled
-    /// default: False
-    enable_redeem: Option<bool>,
-    /// Indicates whether mint functionality should be enabled
-    /// default: False
-    enable_mint: Option<bool>,
-    /// Indicates whether burn functionality should be enabled
-    /// default: False
-    enable_burn: Option<bool>,
-}
-
-impl InitConfig {
-    pub fn public_total_supply(&self) -> bool {
-        self.public_total_supply.unwrap_or(false)
-    }
-
-    pub fn deposit_enabled(&self) -> bool {
-        self.enable_deposit.unwrap_or(false)
-    }
-
-    pub fn redeem_enabled(&self) -> bool {
-        self.enable_redeem.unwrap_or(false)
-    }
-
-    pub fn mint_enabled(&self) -> bool {
-        self.enable_mint.unwrap_or(false)
-    }
-
-    pub fn burn_enabled(&self) -> bool {
-        self.enable_burn.unwrap_or(false)
-    }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    // Native coin interactions
-    Redeem {
-        amount: Uint128,
-        denom: Option<String>,
-        padding: Option<String>,
-    },
-    Deposit {
-        padding: Option<String>,
-    },
-
-    // Base ERC-20 stuff
-    Transfer {
-        recipient: HumanAddr,
-        amount: Uint128,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    Send {
-        recipient: HumanAddr,
-        recipient_code_hash: Option<String>,
-        amount: Uint128,
-        msg: Option<Binary>,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    BatchTransfer {
-        actions: Vec<batch::TransferAction>,
-        padding: Option<String>,
-    },
-    BatchSend {
-        actions: Vec<batch::SendAction>,
-        padding: Option<String>,
-    },
-    Burn {
-        amount: Uint128,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
     CreateViewingKey {
         entropy: String,
         padding: Option<String>,
     },
     SetViewingKey {
         key: String,
-        padding: Option<String>,
-    },
-
-    // Allowance
-    IncreaseAllowance {
-        spender: HumanAddr,
-        amount: Uint128,
-        expiration: Option<u64>,
-        padding: Option<String>,
-    },
-    DecreaseAllowance {
-        spender: HumanAddr,
-        amount: Uint128,
-        expiration: Option<u64>,
-        padding: Option<String>,
-    },
-    TransferFrom {
-        owner: HumanAddr,
-        recipient: HumanAddr,
-        amount: Uint128,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    SendFrom {
-        owner: HumanAddr,
-        recipient: HumanAddr,
-        recipient_code_hash: Option<String>,
-        amount: Uint128,
-        msg: Option<Binary>,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    BatchTransferFrom {
-        actions: Vec<batch::TransferFromAction>,
-        padding: Option<String>,
-    },
-    BatchSendFrom {
-        actions: Vec<batch::SendFromAction>,
-        padding: Option<String>,
-    },
-    BurnFrom {
-        owner: HumanAddr,
-        amount: Uint128,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    BatchBurnFrom {
-        actions: Vec<batch::BurnFromAction>,
-        padding: Option<String>,
-    },
-
-    // Mint
-    Mint {
-        recipient: HumanAddr,
-        amount: Uint128,
-        memo: Option<String>,
-        padding: Option<String>,
-    },
-    BatchMint {
-        actions: Vec<batch::MintAction>,
-        padding: Option<String>,
-    },
-    AddMinters {
-        minters: Vec<HumanAddr>,
-        padding: Option<String>,
-    },
-    RemoveMinters {
-        minters: Vec<HumanAddr>,
-        padding: Option<String>,
-    },
-    SetMinters {
-        minters: Vec<HumanAddr>,
         padding: Option<String>,
     },
 
@@ -208,107 +43,17 @@ pub enum HandleMsg {
         level: ContractStatusLevel,
         padding: Option<String>,
     },
-
-    // Permit
-    RevokePermit {
-        permit_name: String,
-        padding: Option<String>,
-    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleAnswer {
-    // Native
-    Deposit {
-        status: ResponseStatus,
-    },
-    Redeem {
-        status: ResponseStatus,
-    },
-
-    // Base
-    Transfer {
-        status: ResponseStatus,
-    },
-    Send {
-        status: ResponseStatus,
-    },
-    BatchTransfer {
-        status: ResponseStatus,
-    },
-    BatchSend {
-        status: ResponseStatus,
-    },
-    Burn {
-        status: ResponseStatus,
-    },
-    CreateViewingKey {
-        key: ViewingKey,
-    },
-    SetViewingKey {
-        status: ResponseStatus,
-    },
-
-    // Allowance
-    IncreaseAllowance {
-        spender: HumanAddr,
-        owner: HumanAddr,
-        allowance: Uint128,
-    },
-    DecreaseAllowance {
-        spender: HumanAddr,
-        owner: HumanAddr,
-        allowance: Uint128,
-    },
-    TransferFrom {
-        status: ResponseStatus,
-    },
-    SendFrom {
-        status: ResponseStatus,
-    },
-    BatchTransferFrom {
-        status: ResponseStatus,
-    },
-    BatchSendFrom {
-        status: ResponseStatus,
-    },
-    BurnFrom {
-        status: ResponseStatus,
-    },
-    BatchBurnFrom {
-        status: ResponseStatus,
-    },
-
-    // Mint
-    Mint {
-        status: ResponseStatus,
-    },
-    BatchMint {
-        status: ResponseStatus,
-    },
-    AddMinters {
-        status: ResponseStatus,
-    },
-    RemoveMinters {
-        status: ResponseStatus,
-    },
-    SetMinters {
-        status: ResponseStatus,
-    },
+    CreateViewingKey { key: ViewingKey },
+    SetViewingKey { status: ResponseStatus },
 
     // Other
-    ChangeAdmin {
-        status: ResponseStatus,
-    },
-    SetContractStatus {
-        status: ResponseStatus,
-    },
-
-    // Permit
-    RevokePermit {
-        status: ResponseStatus,
-    },
+    ChangeAdmin { status: ResponseStatus },
+    SetContractStatus { status: ResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

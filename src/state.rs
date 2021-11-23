@@ -30,16 +30,6 @@ pub struct Constants {
     pub symbol: String,
     pub decimals: u8,
     pub prng_seed: Vec<u8>,
-    // privacy configuration
-    pub total_supply_is_public: bool,
-    // is deposit enabled
-    pub deposit_is_enabled: bool,
-    // is redeem enabled
-    pub redeem_is_enabled: bool,
-    // is mint enabled
-    pub mint_is_enabled: bool,
-    // is burn enabled
-    pub burn_is_enabled: bool,
     // the address of this contract, used to validate query permits
     pub contract_address: HumanAddr,
 }
