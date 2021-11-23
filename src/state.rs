@@ -1,32 +1,25 @@
+use crate::msg::{status_level_to_u8, u8_to_status_level, ContractStatusLevel};
+use crate::viewing_key::ViewingKey;
+use cosmwasm_std::{CanonicalAddr, HumanAddr, ReadonlyStorage, StdError, StdResult, Storage};
+use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
+use schemars::JsonSchema;
+use secret_toolkit::storage::{TypedStore, TypedStoreMut};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::any::type_name;
 use std::convert::TryFrom;
 
-use cosmwasm_std::{CanonicalAddr, HumanAddr, ReadonlyStorage, StdError, StdResult, Storage};
-use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
-
-use secret_toolkit::storage::{TypedStore, TypedStoreMut};
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use crate::msg::{status_level_to_u8, u8_to_status_level, ContractStatusLevel};
-use crate::viewing_key::ViewingKey;
-use serde::de::DeserializeOwned;
-
 pub static CONFIG_KEY: &[u8] = b"config";
 pub const PREFIX_TXS: &[u8] = b"transfers";
-
 pub const KEY_CONSTANTS: &[u8] = b"constants";
 pub const KEY_TOTAL_SUPPLY: &[u8] = b"total_supply";
 pub const KEY_CONTRACT_STATUS: &[u8] = b"contract_status";
 pub const KEY_MINTERS: &[u8] = b"minters";
 pub const KEY_TX_COUNT: &[u8] = b"tx-count";
-
 pub const PREFIX_CONFIG: &[u8] = b"config";
 pub const PREFIX_BALANCES: &[u8] = b"balances";
 pub const PREFIX_ALLOWANCES: &[u8] = b"allowances";
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
-pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
 
 // Config
 
@@ -349,24 +342,6 @@ pub fn write_viewing_key<S: Storage>(store: &mut S, owner: &CanonicalAddr, key: 
 pub fn read_viewing_key<S: Storage>(store: &S, owner: &CanonicalAddr) -> Option<Vec<u8>> {
     let balance_store = ReadonlyPrefixedStorage::new(PREFIX_VIEW_KEY, store);
     balance_store.get(owner.as_slice())
-}
-
-// Receiver Interface
-
-pub fn get_receiver_hash<S: ReadonlyStorage>(
-    store: &S,
-    account: &HumanAddr,
-) -> Option<StdResult<String>> {
-    let store = ReadonlyPrefixedStorage::new(PREFIX_RECEIVERS, store);
-    store.get(account.as_str().as_bytes()).map(|data| {
-        String::from_utf8(data)
-            .map_err(|_err| StdError::invalid_utf8("stored code hash was not a valid String"))
-    })
-}
-
-pub fn set_receiver_hash<S: Storage>(store: &mut S, account: &HumanAddr, code_hash: String) {
-    let mut store = PrefixedStorage::new(PREFIX_RECEIVERS, store);
-    store.set(account.as_str().as_bytes(), code_hash.as_bytes());
 }
 
 // Helpers

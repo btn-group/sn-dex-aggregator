@@ -228,31 +228,6 @@
     {
       "type": "object",
       "required": [
-        "register_receive"
-      ],
-      "properties": {
-        "register_receive": {
-          "type": "object",
-          "required": [
-            "code_hash"
-          ],
-          "properties": {
-            "code_hash": {
-              "type": "string"
-            },
-            "padding": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
         "create_viewing_key"
       ],
       "properties": {

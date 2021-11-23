@@ -118,10 +118,6 @@ pub enum HandleMsg {
         memo: Option<String>,
         padding: Option<String>,
     },
-    RegisterReceive {
-        code_hash: String,
-        padding: Option<String>,
-    },
     CreateViewingKey {
         entropy: String,
         padding: Option<String>,
@@ -245,9 +241,6 @@ pub enum HandleAnswer {
         status: ResponseStatus,
     },
     Burn {
-        status: ResponseStatus,
-    },
-    RegisterReceive {
         status: ResponseStatus,
     },
     CreateViewingKey {

@@ -138,25 +138,6 @@
     {
       "type": "object",
       "required": [
-        "register_receive"
-      ],
-      "properties": {
-        "register_receive": {
-          "type": "object",
-          "required": [
-            "status"
-          ],
-          "properties": {
-            "status": {
-              "$ref": "#/definitions/ResponseStatus"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
         "create_viewing_key"
       ],
       "properties": {
