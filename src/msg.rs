@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InitMsg {
     pub name: String,
-    pub admin: Option<HumanAddr>,
     pub symbol: String,
     pub decimals: u8,
     pub prng_seed: Binary,
@@ -33,9 +32,6 @@ pub enum HandleMsg {
 pub enum HandleAnswer {
     CreateViewingKey { key: ViewingKey },
     SetViewingKey { status: ResponseStatus },
-
-    // Other
-    ChangeAdmin { status: ResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

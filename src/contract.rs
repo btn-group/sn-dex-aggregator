@@ -22,8 +22,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let admin = msg.admin.unwrap_or(env.message.sender);
-    let _canon_admin = deps.api.canonical_address(&admin)?;
     let prng_seed_hashed = sha_256(&msg.prng_seed.0);
 
     let mut config = Config::from_storage(&mut deps.storage);
