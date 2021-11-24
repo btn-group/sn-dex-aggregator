@@ -21,6 +21,13 @@ pub enum HandleMsg {
         entropy: String,
         padding: Option<String>,
     },
+    UpdateAuthentication {
+        id: usize,
+        label: String,
+        username: String,
+        password: String,
+        notes: String,
+    },
     Receive {
         sender: HumanAddr,
         from: HumanAddr,
@@ -38,6 +45,7 @@ pub enum HandleMsg {
 pub enum HandleAnswer {
     CreateViewingKey { key: ViewingKey },
     SetViewingKey { status: ResponseStatus },
+    UpdateAuthentication { authentication: Authentication },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -47,11 +47,18 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     let response = match msg {
-        HandleMsg::CreateViewingKey { entropy, .. } => try_create_key(deps, env, entropy),
+        HandleMsg::CreateViewingKey { entropy, .. } => create_key(deps, env, entropy),
+        HandleMsg::UpdateAuthentication {
+            id,
+            label,
+            username,
+            password,
+            notes,
+        } => update_authentication(deps, env, id, label, username, password, notes),
         HandleMsg::Receive {
             from, amount, msg, ..
         } => receive(deps, env, from, amount, msg),
-        HandleMsg::SetViewingKey { key, .. } => try_set_key(deps, env, key),
+        HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
     };
 
     pad_response(response)
@@ -80,7 +87,7 @@ fn query_hints<S: Storage, A: Api, Q: Querier>(
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
     let user = users_store.load(address.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
-        next_authentication_id: 1,
+        next_authentication_id: 0,
     });
     let hints = user
         .authentications
@@ -115,11 +122,11 @@ fn receive<S: Storage, A: Api, Q: Querier>(
             username,
             password,
             notes,
-        } => try_create(deps, env, from, amount, label, username, password, notes),
+        } => create_authentication(deps, env, from, amount, label, username, password, notes),
     }
 }
 
-fn try_create<S: Storage, A: Api, Q: Querier>(
+fn create_authentication<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     from: HumanAddr,
@@ -144,7 +151,7 @@ fn try_create<S: Storage, A: Api, Q: Querier>(
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
     let mut user = users_store.load(from.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
-        next_authentication_id: 1,
+        next_authentication_id: 0,
     });
     user.authentications.push(Authentication {
         id: user.next_authentication_id,
@@ -170,7 +177,42 @@ fn try_create<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn try_set_key<S: Storage, A: Api, Q: Querier>(
+fn update_authentication<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    id: usize,
+    label: String,
+    username: String,
+    password: String,
+    notes: String,
+) -> StdResult<HandleResponse> {
+    let users_store = TypedStore::<User, S>::attach(&deps.storage);
+    let mut user = users_store
+        .load(env.message.sender.0.as_bytes())
+        .unwrap_or(User {
+            authentications: vec![],
+            next_authentication_id: 0,
+        });
+    if id >= user.next_authentication_id {
+        return Err(StdError::generic_err("Authentication not found."));
+    }
+    user.authentications[id].label = label;
+    user.authentications[id].username = username;
+    user.authentications[id].password = password;
+    user.authentications[id].notes = notes;
+    TypedStoreMut::<User, S>::attach(&mut deps.storage)
+        .store(env.message.sender.0.as_bytes(), &user)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
+            authentication: user.authentications[id].clone(),
+        })?),
+    })
+}
+
+fn set_key<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     key: String,
@@ -187,7 +229,7 @@ fn try_set_key<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn try_create_key<S: Storage, A: Api, Q: Querier>(
+fn create_key<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     entropy: String,
