@@ -1,7 +1,6 @@
-#![allow(clippy::field_reassign_with_default)] // This is triggered in `#[derive(JsonSchema)]`
-use crate::state::{Hint, SecretContract};
+use crate::state::{Authentication, SecretContract};
 use crate::viewing_key::ViewingKey;
-use cosmwasm_std::{Binary, HumanAddr};
+use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +19,12 @@ pub enum HandleMsg {
     CreateViewingKey {
         entropy: String,
         padding: Option<String>,
+    },
+    Receive {
+        sender: HumanAddr,
+        from: HumanAddr,
+        amount: Uint128,
+        msg: Binary,
     },
     SetViewingKey {
         key: String,
@@ -51,13 +56,30 @@ impl QueryMsg {
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
-    Hints { hints: Vec<Hint> },
+    Hints { hints: Vec<Authentication> },
     ViewingKeyError { msg: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct CreateViewingKeyResponse {
     pub key: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiveAnswer {
+    Create { status: ResponseStatus },
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiveMsg {
+    Create {
+        label: String,
+        username: String,
+        password: String,
+        notes: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

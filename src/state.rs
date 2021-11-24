@@ -14,15 +14,6 @@ pub struct Authentication {
     pub password: String,
     pub notes: String,
 }
-// id will reflect the position in the array
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
-pub struct Hint {
-    pub id: u64,
-    pub label: String,
-    pub username: String,
-    pub password: String,
-    pub notes: String,
-}
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, JsonSchema)]
 pub struct SecretContract {
@@ -33,8 +24,7 @@ pub struct SecretContract {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     pub authentications: Vec<Authentication>,
-    pub available_ids: Vec<u64>,
-    pub hints: Vec<Hint>,
+    pub next_authentication_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
