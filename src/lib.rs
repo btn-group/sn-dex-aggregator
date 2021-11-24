@@ -1,4 +1,3 @@
-mod authentications;
 pub mod contract;
 pub mod msg;
 mod rand;

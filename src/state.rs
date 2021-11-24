@@ -6,10 +6,28 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::type_name;
 
-pub const PREFIX_TXS: &[u8] = b"transfers";
 pub const KEY_CONSTANTS: &[u8] = b"constants";
 pub const PREFIX_CONFIG: &[u8] = b"config";
 pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
+
+// id will reflect the position in the array
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+pub struct Authentication {
+    pub id: u64,
+    pub label: String,
+    pub username: String,
+    pub password: String,
+    pub notes: String,
+}
+// id will reflect the position in the array
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+pub struct Hint {
+    pub id: u64,
+    pub label: String,
+    pub username: String,
+    pub password: String,
+    pub notes: String,
+}
 
 // Config
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, JsonSchema)]

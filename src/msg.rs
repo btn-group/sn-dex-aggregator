@@ -1,5 +1,5 @@
 #![allow(clippy::field_reassign_with_default)] // This is triggered in `#[derive(JsonSchema)]`
-use crate::authentications::Authentication;
+use crate::state::Hint;
 use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{Binary, HumanAddr};
 use schemars::JsonSchema;
@@ -36,18 +36,13 @@ pub enum HandleAnswer {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    Authentications {
-        address: HumanAddr,
-        key: String,
-        page: Option<u32>,
-        page_size: u32,
-    },
+    Hints { address: HumanAddr, key: String },
 }
 
 impl QueryMsg {
     pub fn get_validation_params(&self) -> (Vec<&HumanAddr>, ViewingKey) {
         match self {
-            Self::Authentications { address, key, .. } => (vec![address], ViewingKey(key.clone())),
+            Self::Hints { address, key, .. } => (vec![address], ViewingKey(key.clone())),
             _ => panic!("This query type does not require authentication"),
         }
     }
@@ -56,13 +51,8 @@ impl QueryMsg {
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
-    Authentications {
-        txs: Vec<Authentication>,
-        total: Option<u64>,
-    },
-    ViewingKeyError {
-        msg: String,
-    },
+    Hints { hints: Vec<Hint> },
+    ViewingKeyError { msg: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
