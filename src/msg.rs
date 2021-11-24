@@ -1,5 +1,5 @@
 #![allow(clippy::field_reassign_with_default)] // This is triggered in `#[derive(JsonSchema)]`
-use crate::state::Hint;
+use crate::state::{Hint, SecretContract};
 use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{Binary, HumanAddr};
 use schemars::JsonSchema;
@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InitMsg {
+    pub buttcoin: SecretContract,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,

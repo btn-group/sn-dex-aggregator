@@ -1,6 +1,6 @@
 use crate::constants::PREFIX_VIEW_KEY;
 use crate::viewing_key::ViewingKey;
-use cosmwasm_std::{CanonicalAddr, ReadonlyStorage, Storage};
+use cosmwasm_std::{CanonicalAddr, HumanAddr, ReadonlyStorage, Storage};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,12 @@ pub struct Hint {
     pub notes: String,
 }
 
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, JsonSchema)]
+pub struct SecretContract {
+    pub address: HumanAddr,
+    pub contract_hash: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     pub authentications: Vec<Authentication>,
@@ -33,6 +39,7 @@ pub struct User {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
+    pub buttcoin: SecretContract,
     pub prng_seed: Vec<u8>,
 }
 
