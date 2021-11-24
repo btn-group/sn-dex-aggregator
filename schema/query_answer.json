@@ -5,27 +5,19 @@
     {
       "type": "object",
       "required": [
-        "transfer_history"
+        "hints"
       ],
       "properties": {
-        "transfer_history": {
+        "hints": {
           "type": "object",
           "required": [
-            "txs"
+            "hints"
           ],
           "properties": {
-            "total": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "txs": {
+            "hints": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/Tx"
+                "$ref": "#/definitions/Hint"
               }
             }
           }
@@ -53,77 +45,34 @@
     }
   ],
   "definitions": {
-    "Coin": {
+    "Hint": {
       "type": "object",
       "required": [
-        "amount",
-        "denom"
-      ],
-      "properties": {
-        "amount": {
-          "$ref": "#/definitions/Uint128"
-        },
-        "denom": {
-          "type": "string"
-        }
-      }
-    },
-    "HumanAddr": {
-      "type": "string"
-    },
-    "Tx": {
-      "type": "object",
-      "required": [
-        "coins",
-        "from",
         "id",
-        "receiver",
-        "sender"
+        "label",
+        "notes",
+        "password",
+        "username"
       ],
       "properties": {
-        "block_height": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "block_time": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "coins": {
-          "$ref": "#/definitions/Coin"
-        },
-        "from": {
-          "$ref": "#/definitions/HumanAddr"
-        },
         "id": {
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
-        "memo": {
-          "type": [
-            "string",
-            "null"
-          ]
+        "label": {
+          "type": "string"
         },
-        "receiver": {
-          "$ref": "#/definitions/HumanAddr"
+        "notes": {
+          "type": "string"
         },
-        "sender": {
-          "$ref": "#/definitions/HumanAddr"
+        "password": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
         }
       }
-    },
-    "Uint128": {
-      "type": "string"
     }
   }
 }

@@ -5,15 +5,14 @@
     {
       "type": "object",
       "required": [
-        "transfer_history"
+        "hints"
       ],
       "properties": {
-        "transfer_history": {
+        "hints": {
           "type": "object",
           "required": [
             "address",
-            "key",
-            "page_size"
+            "key"
           ],
           "properties": {
             "address": {
@@ -21,19 +20,6 @@
             },
             "key": {
               "type": "string"
-            },
-            "page": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "page_size": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
             }
           }
         }

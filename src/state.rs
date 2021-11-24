@@ -29,6 +29,13 @@ pub struct Hint {
     pub notes: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct User {
+    pub authentications: Vec<Authentication>,
+    pub available_ids: Vec<u64>,
+    pub hints: Vec<Hint>,
+}
+
 // Config
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct Constants {

@@ -2,16 +2,14 @@ use crate::msg::{
     space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success,
 };
 use crate::rand::sha_256;
-use crate::state::{read_viewing_key, write_viewing_key, Config, Constants, ReadonlyConfig};
+use crate::state::{read_viewing_key, write_viewing_key, Config, Constants, ReadonlyConfig, User};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
-/// This contract implements SNIP-20 standard:
-/// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
 use cosmwasm_std::{
-    to_binary, Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, QueryResult, ReadonlyStorage, StdResult, Storage,
+    to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
+    QueryResult, StdResult, Storage,
 };
+use secret_toolkit::storage::TypedStore;
 
-/// We make sure that responses from `handle` are padded to a multiple of this size.
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -87,12 +85,16 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
 
 pub fn query_hints<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    account: &HumanAddr,
+    address: &HumanAddr,
 ) -> StdResult<Binary> {
-    let _address = deps.api.canonical_address(account)?;
-    // let (txs, total) = get_hints(&deps.api, &deps.storage, &address, page, page_size)?;
+    let users_store = TypedStore::<User, S>::attach(&deps.storage);
+    let user = users_store.load(address.0.as_bytes()).unwrap_or(User {
+        authentications: vec![],
+        available_ids: vec![],
+        hints: vec![],
+    });
 
-    let result = QueryAnswer::Hints { hints: vec![] };
+    let result = QueryAnswer::Hints { hints: user.hints };
     to_binary(&result)
 }
 
@@ -131,41 +133,4 @@ pub fn try_create_key<S: Storage, A: Api, Q: Querier>(
         log: vec![],
         data: Some(to_binary(&HandleAnswer::CreateViewingKey { key })?),
     })
-}
-
-pub fn get_hints<A: Api, S: ReadonlyStorage>(
-    api: &A,
-    storage: &S,
-    for_address: &CanonicalAddr,
-) -> StdResult<HandleResponse> {
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: None,
-    })
-    // let store =
-    //     ReadonlyPrefixedStorage::multilevel(&[PREFIX_TRANSFERS, for_address.as_slice()], storage);
-
-    // // Try to access the storage of transfers for the account.
-    // // If it doesn't exist yet, return an empty list of transfers.
-    // let store = AppendStore::<StoredLegacyTransfer, _, _>::attach(&store);
-    // let store = if let Some(result) = store {
-    //     result?
-    // } else {
-    //     return Ok((vec![], 0));
-    // };
-
-    // // Take `page_size` txs starting from the latest tx, potentially skipping `page * page_size`
-    // // txs from the start.
-    // let transfer_iter = store
-    //     .iter()
-    //     .rev()
-    //     .skip((page * page_size) as _)
-    //     .take(page_size as _);
-
-    // // The `and_then` here flattens the `StdResult<StdResult<RichTx>>` to an `StdResult<RichTx>`
-    // let transfers: StdResult<Vec<Tx>> = transfer_iter
-    //     .map(|tx| tx.map(|tx| tx.into_humanized(api)).and_then(|x| x))
-    //     .collect();
-    // transfers.map(|txs| (txs, store.len() as u64))
 }
