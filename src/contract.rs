@@ -9,20 +9,33 @@ use cosmwasm_std::{
     to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
     QueryResult, StdResult, Storage,
 };
+use secret_toolkit::snip20;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    _env: Env,
+    env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
+        buttcoin: msg.buttcoin,
         prng_seed: sha_256(&msg.prng_seed.0).to_vec(),
     };
     config_store.store(CONFIG_KEY, &config)?;
 
-    Ok(InitResponse::default())
+    let messages = vec![snip20::register_receive_msg(
+        env.contract_code_hash.clone(),
+        None,
+        RESPONSE_BLOCK_SIZE,
+        config.buttcoin.contract_hash,
+        config.buttcoin.address,
+    )?];
+
+    Ok(InitResponse {
+        messages,
+        log: vec![],
+    })
 }
 
 fn pad_response(response: StdResult<HandleResponse>) -> StdResult<HandleResponse> {
