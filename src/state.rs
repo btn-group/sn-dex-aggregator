@@ -1,12 +1,11 @@
 use crate::viewing_key::ViewingKey;
-use cosmwasm_std::{CanonicalAddr, HumanAddr, ReadonlyStorage, StdError, StdResult, Storage};
+use cosmwasm_std::{CanonicalAddr, ReadonlyStorage, StdError, StdResult, Storage};
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::type_name;
 
-pub static CONFIG_KEY: &[u8] = b"config";
 pub const PREFIX_TXS: &[u8] = b"transfers";
 pub const KEY_CONSTANTS: &[u8] = b"constants";
 pub const PREFIX_CONFIG: &[u8] = b"config";
@@ -16,8 +15,6 @@ pub const PREFIX_VIEW_KEY: &[u8] = b"viewingkey";
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct Constants {
     pub prng_seed: Vec<u8>,
-    // the address of this contract, used to validate query permits
-    pub contract_address: HumanAddr,
 }
 
 pub struct ReadonlyConfig<'a, S: ReadonlyStorage> {

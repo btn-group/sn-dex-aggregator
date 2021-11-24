@@ -3,7 +3,6 @@ use crate::transaction_history::Tx;
 use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{Binary, HumanAddr};
 use schemars::JsonSchema;
-use secret_toolkit::permit::Permit;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -43,10 +42,6 @@ pub enum QueryMsg {
         page: Option<u32>,
         page_size: u32,
     },
-    WithPermit {
-        permit: Permit,
-        query: QueryWithPermit,
-    },
 }
 
 impl QueryMsg {
@@ -56,12 +51,6 @@ impl QueryMsg {
             _ => panic!("This query type does not require authentication"),
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum QueryWithPermit {
-    TransferHistory { page: Option<u32>, page_size: u32 },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -95,29 +84,4 @@ pub fn space_pad(block_size: usize, message: &mut Vec<u8>) -> &mut Vec<u8> {
     message.reserve(missing);
     message.extend(std::iter::repeat(b' ').take(missing));
     message
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cosmwasm_std::{from_slice, StdResult};
-
-    #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
-    #[serde(rename_all = "snake_case")]
-    pub enum Something {
-        Var { padding: Option<String> },
-    }
-
-    #[test]
-    fn test_deserialization_of_missing_option_fields() -> StdResult<()> {
-        let input = b"{ \"var\": {} }";
-        let obj: Something = from_slice(input)?;
-        assert_eq!(
-            obj,
-            Something::Var { padding: None },
-            "unexpected value: {:?}",
-            obj
-        );
-        Ok(())
-    }
 }

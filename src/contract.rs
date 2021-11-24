@@ -1,4 +1,3 @@
-use crate::msg::QueryWithPermit;
 use crate::msg::{
     space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success,
 };
@@ -9,24 +8,21 @@ use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 /// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
 use cosmwasm_std::{
     to_binary, Api, Binary, CanonicalAddr, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage,
+    Querier, QueryResult, ReadonlyStorage, StdResult, Storage,
 };
-use secret_toolkit::permit::{validate, Permission, Permit};
 
 /// We make sure that responses from `handle` are padded to a multiple of this size.
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
-pub const PREFIX_REVOKED_PERMITS: &str = "revoked_permits";
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
+    _env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let prng_seed_hashed = sha_256(&msg.prng_seed.0);
 
     let mut config = Config::from_storage(&mut deps.storage);
     config.set_constants(&Constants {
-        contract_address: env.contract.address,
         prng_seed: prng_seed_hashed.to_vec(),
     })?;
     Ok(InitResponse::default())
@@ -57,35 +53,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
 pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryMsg) -> QueryResult {
     match msg {
-        QueryMsg::WithPermit { permit, query } => permit_queries(deps, permit, query),
         _ => viewing_keys_queries(deps, msg),
-    }
-}
-
-fn permit_queries<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    permit: Permit,
-    query: QueryWithPermit,
-) -> Result<Binary, StdError> {
-    // Validate permit content
-    let token_address = ReadonlyConfig::from_storage(&deps.storage)
-        .constants()?
-        .contract_address;
-
-    let account = validate(deps, PREFIX_REVOKED_PERMITS, &permit, token_address)?;
-
-    // Permit validated! We can now execute the query.
-    match query {
-        QueryWithPermit::TransferHistory { page, page_size } => {
-            if !permit.check_permission(&Permission::History) {
-                return Err(StdError::generic_err(format!(
-                    "No permission to query history, got permissions {:?}",
-                    permit.params.permissions
-                )));
-            }
-
-            query_transfers(deps, &account, page.unwrap_or(0), page_size)
-        }
     }
 }
 

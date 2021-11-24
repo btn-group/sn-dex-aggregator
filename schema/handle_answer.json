@@ -39,25 +39,6 @@
           }
         }
       }
-    },
-    {
-      "type": "object",
-      "required": [
-        "change_admin"
-      ],
-      "properties": {
-        "change_admin": {
-          "type": "object",
-          "required": [
-            "status"
-          ],
-          "properties": {
-            "status": {
-              "$ref": "#/definitions/ResponseStatus"
-            }
-          }
-        }
-      }
     }
   ],
   "definitions": {
