@@ -22,6 +22,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
         buttcoin: msg.buttcoin,
+        butt_lode: msg.butt_lode,
         prng_seed: sha_256(&msg.prng_seed.0).to_vec(),
     };
     config_store.store(CONFIG_KEY, &config)?;

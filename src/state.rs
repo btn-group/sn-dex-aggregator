@@ -30,6 +30,7 @@ pub struct User {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
     pub buttcoin: SecretContract,
+    pub butt_lode: SecretContract,
     pub prng_seed: Vec<u8>,
 }
 

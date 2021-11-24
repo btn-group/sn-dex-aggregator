@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InitMsg {
     pub buttcoin: SecretContract,
+    pub butt_lode: SecretContract,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
