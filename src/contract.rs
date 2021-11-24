@@ -157,15 +157,14 @@ fn try_create<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
 
     Ok(HandleResponse {
-        messages: vec![],
-        // messages: vec![snip20::transfer_msg(
-        //     config.butt_lode.address,
-        //     Uint128(AMOUNT_FOR_TRANSACTION),
-        //     None,
-        //     BLOCK_SIZE,
-        //     config.buttcoin.contract_hash,
-        //     config.buttcoin.address,
-        // )?],
+        messages: vec![snip20::transfer_msg(
+            config.butt_lode.address,
+            Uint128(AMOUNT_FOR_TRANSACTION),
+            None,
+            RESPONSE_BLOCK_SIZE,
+            config.buttcoin.contract_hash,
+            config.buttcoin.address,
+        )?],
         log: vec![],
         data: Some(to_binary(&ReceiveAnswer::Create { status: Success })?),
     })
