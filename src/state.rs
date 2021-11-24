@@ -25,6 +25,7 @@ pub struct SecretContract {
 pub struct User {
     pub authentications: Vec<Authentication>,
     pub next_authentication_id: usize,
+    pub hints: Vec<Authentication>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

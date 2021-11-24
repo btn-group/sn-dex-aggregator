@@ -87,24 +87,10 @@ fn query_hints<S: Storage, A: Api, Q: Querier>(
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
     let user = users_store.load(address.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
+        hints: vec![],
         next_authentication_id: 0,
     });
-    let hints = user
-        .authentications
-        .into_iter()
-        .map(|mut authentication| {
-            if authentication.label.chars().nth(0).is_some() {
-                authentication.label = authentication.label.chars().nth(0).unwrap().to_string();
-                authentication.username =
-                    authentication.username.chars().nth(0).unwrap().to_string();
-                authentication.password =
-                    authentication.password.chars().nth(0).unwrap().to_string();
-                authentication.notes = authentication.notes.chars().nth(0).unwrap().to_string();
-            }
-            authentication
-        })
-        .collect::<Vec<Authentication>>();
-    let result = QueryAnswer::Hints { hints: hints };
+    let result = QueryAnswer::Hints { hints: user.hints };
     to_binary(&result)
 }
 
@@ -151,6 +137,7 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
     let mut user = users_store.load(from.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
+        hints: vec![],
         next_authentication_id: 0,
     });
     user.authentications.push(Authentication {
@@ -160,6 +147,9 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
         password: password,
         notes: notes,
     });
+    user.hints.push(generate_hint_from_authentication(
+        user.authentications[user.next_authentication_id].clone(),
+    ));
     user.next_authentication_id += 1;
     TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
 
@@ -177,6 +167,31 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn generate_hint_from_authentication(authentication: Authentication) -> Authentication {
+    let hint_username: String = if authentication.username.len() > 0 {
+        authentication.username.chars().nth(0).unwrap().to_string()
+    } else {
+        "".to_string()
+    };
+    let hint_password: String = if authentication.password.len() > 0 {
+        authentication.password.chars().nth(0).unwrap().to_string()
+    } else {
+        "".to_string()
+    };
+    let hint_notes: String = if authentication.notes.len() > 0 {
+        authentication.notes.chars().nth(0).unwrap().to_string()
+    } else {
+        "".to_string()
+    };
+    Authentication {
+        id: authentication.id,
+        label: authentication.label,
+        username: hint_username,
+        password: hint_password,
+        notes: hint_notes,
+    }
+}
+
 fn update_authentication<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
@@ -191,6 +206,7 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
         .load(env.message.sender.0.as_bytes())
         .unwrap_or(User {
             authentications: vec![],
+            hints: vec![],
             next_authentication_id: 0,
         });
     if id >= user.next_authentication_id {
@@ -200,6 +216,7 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
     user.authentications[id].username = username;
     user.authentications[id].password = password;
     user.authentications[id].notes = notes;
+    user.hints[id] = generate_hint_from_authentication(user.authentications[id].clone());
     TypedStoreMut::<User, S>::attach(&mut deps.storage)
         .store(env.message.sender.0.as_bytes(), &user)?;
 
