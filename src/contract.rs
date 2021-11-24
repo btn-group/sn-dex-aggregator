@@ -75,12 +75,12 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
         } else if key.check_viewing_key(expected_key.unwrap().as_slice()) {
             return match msg {
                 // Base
-                QueryMsg::TransferHistory {
+                QueryMsg::Authentications {
                     address,
                     page,
                     page_size,
                     ..
-                } => query_transfers(deps, &address, page.unwrap_or(0), page_size),
+                } => query_authentications(deps, &address, page.unwrap_or(0), page_size),
             };
         }
     }
@@ -90,16 +90,16 @@ pub fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-pub fn query_transfers<S: Storage, A: Api, Q: Querier>(
+pub fn query_authentications<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     account: &HumanAddr,
     page: u32,
     page_size: u32,
 ) -> StdResult<Binary> {
     // let address = deps.api.canonical_address(account)?;
-    // let (txs, total) = get_transfers(&deps.api, &deps.storage, &address, page, page_size)?;
+    // let (txs, total) = get_authentications(&deps.api, &deps.storage, &address, page, page_size)?;
 
-    let result = QueryAnswer::TransferHistory {
+    let result = QueryAnswer::Authentications {
         txs: vec![],
         total: Some(123),
     };
@@ -143,7 +143,7 @@ pub fn try_create_key<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-pub fn get_transfers<A: Api, S: ReadonlyStorage>(
+pub fn get_authentications<A: Api, S: ReadonlyStorage>(
     api: &A,
     storage: &S,
     for_address: &CanonicalAddr,
