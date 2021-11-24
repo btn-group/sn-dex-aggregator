@@ -43,7 +43,6 @@ impl QueryMsg {
     pub fn get_validation_params(&self) -> (Vec<&HumanAddr>, ViewingKey) {
         match self {
             Self::Hints { address, key, .. } => (vec![address], ViewingKey(key.clone())),
-            _ => panic!("This query type does not require authentication"),
         }
     }
 }

@@ -1,28 +1,27 @@
+use crate::constants::*;
 use crate::msg::{
     space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus::Success,
 };
 use crate::rand::sha_256;
-use crate::state::{read_viewing_key, write_viewing_key, Config, Constants, ReadonlyConfig, User};
+use crate::state::{read_viewing_key, write_viewing_key, Config, User};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_std::{
     to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
     QueryResult, StdResult, Storage,
 };
-use secret_toolkit::storage::TypedStore;
-
-pub const RESPONSE_BLOCK_SIZE: usize = 256;
+use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let prng_seed_hashed = sha_256(&msg.prng_seed.0);
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let config: Config = Config {
+        prng_seed: sha_256(&msg.prng_seed.0).to_vec(),
+    };
+    config_store.store(CONFIG_KEY, &config)?;
 
-    let mut config = Config::from_storage(&mut deps.storage);
-    config.set_constants(&Constants {
-        prng_seed: prng_seed_hashed.to_vec(),
-    })?;
     Ok(InitResponse::default())
 }
 
@@ -120,8 +119,8 @@ pub fn try_create_key<S: Storage, A: Api, Q: Querier>(
     env: Env,
     entropy: String,
 ) -> StdResult<HandleResponse> {
-    let constants = ReadonlyConfig::from_storage(&deps.storage).constants()?;
-    let prng_seed = constants.prng_seed;
+    let config: Config = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
+    let prng_seed = config.prng_seed;
 
     let key = ViewingKey::new(&env, &prng_seed, (&entropy).as_ref());
 

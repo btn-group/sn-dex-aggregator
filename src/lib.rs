@@ -1,3 +1,4 @@
+mod constants;
 pub mod contract;
 pub mod msg;
 mod rand;
