@@ -2,7 +2,6 @@ mod authorize;
 mod constants;
 pub mod contract;
 pub mod msg;
-mod rand;
 pub mod state;
 mod utils;
 mod viewing_key;

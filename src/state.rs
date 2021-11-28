@@ -32,7 +32,6 @@ pub struct User {
 pub struct Config {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,
-    pub prng_seed: Vec<u8>,
 }
 
 // Viewing Keys

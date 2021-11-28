@@ -4,7 +4,6 @@ use crate::msg::{
     space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveAnswer, ReceiveMsg,
     ResponseStatus::Success,
 };
-use crate::rand::sha_256;
 use crate::state::{read_viewing_key, write_viewing_key, Authentication, Config, User};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_std::{
@@ -23,7 +22,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let config: Config = Config {
         buttcoin: msg.buttcoin,
         butt_lode: msg.butt_lode,
-        prng_seed: sha_256(&msg.prng_seed.0).to_vec(),
     };
     config_store.store(CONFIG_KEY, &config)?;
 
@@ -47,7 +45,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     let response = match msg {
-        HandleMsg::CreateViewingKey { entropy, .. } => create_key(deps, env, entropy),
         HandleMsg::UpdateAuthentication {
             id,
             label,
@@ -243,26 +240,6 @@ fn set_key<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::SetViewingKey { status: Success })?),
-    })
-}
-
-fn create_key<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    entropy: String,
-) -> StdResult<HandleResponse> {
-    let config: Config = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
-    let prng_seed = config.prng_seed;
-
-    let key = ViewingKey::new(&env, &prng_seed, (&entropy).as_ref());
-
-    let message_sender = deps.api.canonical_address(&env.message.sender)?;
-    write_viewing_key(&mut deps.storage, &message_sender, &key);
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::CreateViewingKey { key })?),
     })
 }
 

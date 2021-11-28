@@ -183,8 +183,6 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
- "rand_chacha",
- "rand_core",
  "schemars",
  "secret-toolkit",
  "serde",

@@ -8,19 +8,11 @@ use serde::{Deserialize, Serialize};
 pub struct InitMsg {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,
-    pub name: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub prng_seed: Binary,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    CreateViewingKey {
-        entropy: String,
-        padding: Option<String>,
-    },
     UpdateAuthentication {
         id: usize,
         label: String,
@@ -43,7 +35,6 @@ pub enum HandleMsg {
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleAnswer {
-    CreateViewingKey { key: ViewingKey },
     SetViewingKey { status: ResponseStatus },
     UpdateAuthentication { authentication: Authentication },
 }

@@ -5,31 +5,6 @@
     {
       "type": "object",
       "required": [
-        "create_viewing_key"
-      ],
-      "properties": {
-        "create_viewing_key": {
-          "type": "object",
-          "required": [
-            "entropy"
-          ],
-          "properties": {
-            "entropy": {
-              "type": "string"
-            },
-            "padding": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
         "update_authentication"
       ],
       "properties": {
