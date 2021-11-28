@@ -13,13 +13,6 @@ pub struct InitMsg {
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    UpdateAuthentication {
-        id: usize,
-        label: String,
-        username: String,
-        password: String,
-        notes: String,
-    },
     Receive {
         sender: HumanAddr,
         from: HumanAddr,
@@ -30,12 +23,23 @@ pub enum HandleMsg {
         key: String,
         padding: Option<String>,
     },
+    Show {
+        id: usize,
+    },
+    UpdateAuthentication {
+        id: usize,
+        label: String,
+        username: String,
+        password: String,
+        notes: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleAnswer {
     SetViewingKey { status: ResponseStatus },
+    Show { authentication: Authentication },
     UpdateAuthentication { authentication: Authentication },
 }
 
@@ -60,17 +64,6 @@ pub enum QueryAnswer {
     ViewingKeyError { msg: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
-pub struct CreateViewingKeyResponse {
-    pub key: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
-pub enum ReceiveAnswer {
-    Create { status: ResponseStatus },
-}
-
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiveMsg {
@@ -86,7 +79,6 @@ pub enum ReceiveMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ResponseStatus {
     Success,
-    Failure,
 }
 
 // Take a Vec<u8> and pad it up to a multiple of `block_size`, using spaces at the end.

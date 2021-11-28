@@ -1,13 +1,13 @@
 use crate::authorize::authorize;
 use crate::constants::*;
 use crate::msg::{
-    space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveAnswer, ReceiveMsg,
+    space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveMsg,
     ResponseStatus::Success,
 };
 use crate::state::{read_viewing_key, write_viewing_key, Authentication, Config, User};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
+    from_binary, log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
     Querier, QueryResult, StdError, StdResult, Storage, Uint128,
 };
 use secret_toolkit::snip20;
@@ -45,6 +45,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     let response = match msg {
+        HandleMsg::Receive {
+            from, amount, msg, ..
+        } => receive(deps, env, from, amount, msg),
+        HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
+        HandleMsg::Show { id } => show(deps, env, id),
         HandleMsg::UpdateAuthentication {
             id,
             label,
@@ -52,10 +57,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             password,
             notes,
         } => update_authentication(deps, env, id, label, username, password, notes),
-        HandleMsg::Receive {
-            from, amount, msg, ..
-        } => receive(deps, env, from, amount, msg),
-        HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
     };
 
     pad_response(response)
@@ -137,13 +138,14 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
         hints: vec![],
         next_authentication_id: 0,
     });
-    user.authentications.push(Authentication {
+    let authentication: Authentication = Authentication {
         id: user.next_authentication_id,
         label: label,
         username: username,
         password: password,
         notes: notes,
-    });
+    };
+    user.authentications.push(authentication.clone());
     user.hints.push(generate_hint_from_authentication(
         user.authentications[user.next_authentication_id].clone(),
     ));
@@ -159,8 +161,15 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
             config.buttcoin.contract_hash,
             config.buttcoin.address,
         )?],
-        log: vec![],
-        data: Some(to_binary(&ReceiveAnswer::Create { status: Success })?),
+        log: vec![
+            log("action", "create"),
+            log("id", authentication.id),
+            log("label", authentication.label),
+            log("username", authentication.username),
+            log("password", authentication.password),
+            log("notes", authentication.notes),
+        ],
+        data: None,
     })
 }
 
@@ -243,6 +252,33 @@ fn set_key<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn show<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    id: usize,
+) -> StdResult<HandleResponse> {
+    // Find or initialize User locker
+    let users_store = TypedStore::<User, S>::attach(&deps.storage);
+    let user = users_store
+        .load(env.message.sender.0.as_bytes())
+        .unwrap_or(User {
+            authentications: vec![],
+            hints: vec![],
+            next_authentication_id: 0,
+        });
+    if id >= user.next_authentication_id {
+        return Err(StdError::generic_err("Authentication not found."));
+    }
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Show {
+            authentication: user.authentications[id].clone(),
+        })?),
+    })
+}
+
 fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
@@ -269,4 +305,251 @@ fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
     to_binary(&QueryAnswer::ViewingKeyError {
         msg: "Wrong viewing key for this address or viewing key not set".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::SecretContract;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
+
+    // === HELPERS ===
+    fn init_helper() -> (
+        StdResult<InitResponse>,
+        Extern<MockStorage, MockApi, MockQuerier>,
+    ) {
+        let env = mock_env(mock_user_address(), &[]);
+        let mut deps = mock_dependencies(20, &[]);
+        let msg = InitMsg {
+            buttcoin: mock_buttcoin(),
+            butt_lode: mock_butt_lode(),
+        };
+        (init(&mut deps, env.clone(), msg), deps)
+    }
+
+    fn mock_authentication() -> Authentication {
+        Authentication {
+            id: 0,
+            label: "Park".to_string(),
+            username: "Username".to_string(),
+            password: "Password!!!".to_string(),
+            notes: "dumb shit variant".to_string(),
+        }
+    }
+
+    fn mock_buttcoin() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("token-address"),
+            contract_hash: "token-contract-hash".to_string(),
+        }
+    }
+
+    fn mock_butt_lode() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("token-address"),
+            contract_hash: "token-contract-hash".to_string(),
+        }
+    }
+
+    fn mock_user_address() -> HumanAddr {
+        HumanAddr::from("gary")
+    }
+
+    // === TESTS ===
+    #[test]
+    fn test_create() {
+        let (_init_result, mut deps) = init_helper();
+
+        // when creating an authentication
+        let create_authentication_message = ReceiveMsg::Create {
+            label: mock_authentication().label,
+            username: mock_authentication().username,
+            password: mock_authentication().password,
+            notes: mock_authentication().notes,
+        };
+        let receive_msg = HandleMsg::Receive {
+            sender: mock_user_address(),
+            from: mock_user_address(),
+            amount: Uint128(AMOUNT_FOR_TRANSACTION),
+            msg: to_binary(&create_authentication_message).unwrap(),
+        };
+
+        // = when user sends in a token that is not Buttcoin
+        // = * it raises an error
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_user_address(), &[]),
+            receive_msg.clone(),
+        );
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+
+        // = when user sends in Buttcoin
+        // == when user sends in the wrong amount
+        let receive_msg = HandleMsg::Receive {
+            sender: mock_user_address(),
+            from: mock_user_address(),
+            amount: Uint128(AMOUNT_FOR_TRANSACTION + 555),
+            msg: to_binary(&create_authentication_message).unwrap(),
+        };
+        // == * it raises an error
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            receive_msg,
+        );
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err(format!(
+                "Amount sent in: {}. Amount required {}.",
+                AMOUNT_FOR_TRANSACTION + 555,
+                Uint128(AMOUNT_FOR_TRANSACTION)
+            ))
+        );
+        // == when user sends in the right amount
+        let receive_msg = HandleMsg::Receive {
+            sender: mock_user_address(),
+            from: mock_user_address(),
+            amount: Uint128(AMOUNT_FOR_TRANSACTION),
+            msg: to_binary(&create_authentication_message).unwrap(),
+        };
+        // == * it sends the BUTT to the BUTT lode
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            receive_msg,
+        );
+        let handle_result_unwrapped = handle_result.unwrap();
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![snip20::transfer_msg(
+                mock_butt_lode().address,
+                Uint128(AMOUNT_FOR_TRANSACTION),
+                None,
+                RESPONSE_BLOCK_SIZE,
+                mock_buttcoin().contract_hash,
+                mock_buttcoin().address,
+            )
+            .unwrap()],
+        );
+        // == * it specifies the correct log details
+        assert_eq!(
+            handle_result_unwrapped.log,
+            vec![
+                log("action", "create"),
+                log("id", mock_authentication().id),
+                log("label", mock_authentication().label),
+                log("username", mock_authentication().username),
+                log("password", mock_authentication().password),
+                log("notes", mock_authentication().notes),
+            ],
+        );
+        // == * it creates the authentication for that user
+        let show_msg = HandleMsg::Show { id: 0 };
+        let handle_result_unwrapped =
+            handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
+        let handle_result_data: HandleAnswer =
+            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
+        assert_eq!(
+            to_binary(&handle_result_data).unwrap(),
+            to_binary(&HandleAnswer::Show {
+                authentication: mock_authentication(),
+            })
+            .unwrap()
+        );
+
+        // == * it creates the hint for that user
+        let set_viewing_key_msg = HandleMsg::SetViewingKey {
+            key: "bibigo".to_string(),
+            padding: None,
+        };
+        handle(
+            &mut deps,
+            mock_env(mock_user_address(), &[]),
+            set_viewing_key_msg,
+        )
+        .unwrap();
+        let query_result = query(
+            &deps,
+            QueryMsg::Hints {
+                address: mock_user_address(),
+                key: "bibigo".to_string(),
+            },
+        )
+        .unwrap();
+        let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
+        match query_answer {
+            QueryAnswer::Hints { hints } => {
+                assert_eq!(hints[0].id, 0);
+                assert_eq!(hints[0].label, mock_authentication().label);
+                assert_eq!(
+                    hints[0].username,
+                    mock_authentication()
+                        .username
+                        .chars()
+                        .nth(0)
+                        .unwrap()
+                        .to_string()
+                );
+                assert_eq!(
+                    hints[0].password,
+                    mock_authentication()
+                        .password
+                        .chars()
+                        .nth(0)
+                        .unwrap()
+                        .to_string()
+                );
+                assert_eq!(
+                    hints[0].notes,
+                    mock_authentication()
+                        .notes
+                        .chars()
+                        .nth(0)
+                        .unwrap()
+                        .to_string()
+                );
+            }
+            _ => {}
+        }
+        // == * it increases the next_authentication_id by 1
+        let create_authentication_message = ReceiveMsg::Create {
+            label: "Apricot".to_string(),
+            username: "Seeds".to_string(),
+            password: "Good?".to_string(),
+            notes: "xxx".to_string(),
+        };
+        let receive_msg = HandleMsg::Receive {
+            sender: mock_user_address(),
+            from: mock_user_address(),
+            amount: Uint128(AMOUNT_FOR_TRANSACTION),
+            msg: to_binary(&create_authentication_message).unwrap(),
+        };
+        handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            receive_msg,
+        )
+        .unwrap();
+        let show_msg = HandleMsg::Show { id: 1 };
+        let handle_result_unwrapped =
+            handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
+        let handle_result_data: HandleAnswer =
+            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
+        assert_eq!(
+            to_binary(&handle_result_data).unwrap(),
+            to_binary(&HandleAnswer::Show {
+                authentication: Authentication {
+                    id: 1,
+                    label: "Apricot".to_string(),
+                    username: "Seeds".to_string(),
+                    password: "Good?".to_string(),
+                    notes: "xxx".to_string()
+                },
+            })
+            .unwrap()
+        );
+    }
 }
