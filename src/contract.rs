@@ -650,4 +650,47 @@ mod tests {
             _ => {}
         }
     }
+
+    #[test]
+    fn test_handle_set_viewing_key() {
+        let (init_result, mut deps) = init_helper();
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+
+        // Set VK
+        let handle_msg = HandleMsg::SetViewingKey {
+            key: "hi lol".to_string(),
+            padding: None,
+        };
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg);
+        let unwrapped_result: HandleAnswer =
+            from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
+        assert_eq!(
+            to_binary(&unwrapped_result).unwrap(),
+            to_binary(&HandleAnswer::SetViewingKey { status: Success }).unwrap(),
+        );
+
+        // Set valid VK
+        let actual_vk = ViewingKey("x".to_string().repeat(VIEWING_KEY_SIZE));
+        let handle_msg = HandleMsg::SetViewingKey {
+            key: actual_vk.0.clone(),
+            padding: None,
+        };
+        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg);
+        let unwrapped_result: HandleAnswer =
+            from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
+        assert_eq!(
+            to_binary(&unwrapped_result).unwrap(),
+            to_binary(&HandleAnswer::SetViewingKey { status: Success }).unwrap(),
+        );
+        let bob_canonical = deps
+            .api
+            .canonical_address(&HumanAddr("bob".to_string()))
+            .unwrap();
+        let saved_vk = read_viewing_key(&deps.storage, &bob_canonical).unwrap();
+        assert!(actual_vk.check_viewing_key(&saved_vk));
+    }
 }
