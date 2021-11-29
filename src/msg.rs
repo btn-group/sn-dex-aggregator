@@ -1,10 +1,12 @@
+#![allow(clippy::field_reassign_with_default)] // This is triggered in `#[derive(JsonSchema)]`
+
 use crate::state::{Authentication, SecretContract};
 use crate::viewing_key::ViewingKey;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,

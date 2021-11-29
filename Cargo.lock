@@ -120,8 +120,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cosmwasm-schema"
-version = "0.10.0"
-source = "git+https://github.com/enigmampc/SecretNetwork?tag=v1.0.0#490fba9243e6cb291462e9d3c1bcbd1975c0df1e"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b84abfcb5e4909c1f7cf0278a8b506644fa59452933e8c47c8787691afbb5374"
 dependencies = [
  "schemars",
  "serde_json",
@@ -130,7 +131,7 @@ dependencies = [
 [[package]]
 name = "cosmwasm-std"
 version = "0.10.0"
-source = "git+https://github.com/enigmampc/SecretNetwork?tag=v1.0.0#490fba9243e6cb291462e9d3c1bcbd1975c0df1e"
+source = "git+https://github.com/enigmampc/SecretNetwork?tag=v1.0.4-debug-print#004c6bca6f2b7f31a6594abe4f44f2e41b1456b3"
 dependencies = [
  "base64 0.11.0",
  "schemars",
@@ -142,7 +143,7 @@ dependencies = [
 [[package]]
 name = "cosmwasm-storage"
 version = "0.10.0"
-source = "git+https://github.com/enigmampc/SecretNetwork?tag=v1.0.0#490fba9243e6cb291462e9d3c1bcbd1975c0df1e"
+source = "git+https://github.com/enigmampc/SecretNetwork?tag=v1.0.4-debug-print#004c6bca6f2b7f31a6594abe4f44f2e41b1456b3"
 dependencies = [
  "cosmwasm-std",
  "serde",
@@ -182,6 +183,7 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
+ "hex",
  "rand_chacha",
  "rand_core",
  "schemars",
@@ -246,6 +248,12 @@ name = "gimli"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78cc372d058dcf6d5ecd98510e7fbc9e5aec4d21de70f65fea8fecebcd881bd4"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hmac"
@@ -401,9 +409,9 @@ checksum = "7ef03e0a2b150c7a90d01faf6254c9c48a41e95fb2a8c2ac1c6f0d2b9aefc342"
 
 [[package]]
 name = "ryu"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
+checksum = "3c9613b5a66ab9ba26415184cfc41156594925a9cf3a2057e57f31ff145f6568"
 
 [[package]]
 name = "schemars"
@@ -431,10 +439,9 @@ dependencies = [
 [[package]]
 name = "secret-toolkit"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "secret-toolkit-crypto",
- "secret-toolkit-incubator",
  "secret-toolkit-serialization",
  "secret-toolkit-snip20",
  "secret-toolkit-snip721",
@@ -445,7 +452,7 @@ dependencies = [
 [[package]]
 name = "secret-toolkit-crypto"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "cosmwasm-std",
  "libsecp256k1",
@@ -455,21 +462,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "secret-toolkit-incubator"
-version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
-dependencies = [
- "cosmwasm-std",
- "cosmwasm-storage",
- "secret-toolkit-serialization",
- "serde",
- "siphasher",
-]
-
-[[package]]
 name = "secret-toolkit-serialization"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "bincode2",
  "cosmwasm-std",
@@ -479,7 +474,7 @@ dependencies = [
 [[package]]
 name = "secret-toolkit-snip20"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "cosmwasm-std",
  "schemars",
@@ -490,7 +485,7 @@ dependencies = [
 [[package]]
 name = "secret-toolkit-snip721"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "cosmwasm-std",
  "schemars",
@@ -501,7 +496,7 @@ dependencies = [
 [[package]]
 name = "secret-toolkit-storage"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "cosmwasm-std",
  "cosmwasm-storage",
@@ -512,7 +507,7 @@ dependencies = [
 [[package]]
 name = "secret-toolkit-utils"
 version = "0.1.0"
-source = "git+https://github.com/enigmampc/secret-toolkit#6036e729400ddcc38c3918644c4828b722fb8d6e"
+source = "git+https://github.com/enigmampc/secret-toolkit?rev=v0.1.1-debug-print#41a2eb310b5d1b08ced124a5e3664546bd3b355e"
 dependencies = [
  "cosmwasm-std",
  "schemars",
@@ -561,9 +556,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.71"
+version = "1.0.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "063bf466a64011ac24040a49009724ee60a57da1b437617ceb32e53ad61bfb19"
+checksum = "d0ffa0837f2dfa6fb90868c2b5468cad482e175f7dad97e7421951e663f2b527"
 dependencies = [
  "itoa",
  "ryu",
@@ -594,12 +589,6 @@ dependencies = [
  "digest 0.9.0",
  "opaque-debug 0.3.0",
 ]
-
-[[package]]
-name = "siphasher"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "533494a8f9b724d33625ab53c6c4800f7cc445895924a8ef649222dcb76e938b"
 
 [[package]]
 name = "snafu"
@@ -637,9 +626,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "syn"
-version = "1.0.81"
+version = "1.0.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2afee18b8beb5a596ecb4a2dce128c719b4ba399d34126b9e4396e3f9860966"
+checksum = "8daf5dd0bb60cbd4137b1b587d2fc0ae729bc07cf01cd70b36a1ed5ade3b9d59"
 dependencies = [
  "proc-macro2",
  "quote",
