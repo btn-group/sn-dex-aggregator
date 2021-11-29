@@ -24,6 +24,25 @@
     {
       "type": "object",
       "required": [
+        "show"
+      ],
+      "properties": {
+        "show": {
+          "type": "object",
+          "required": [
+            "authentication"
+          ],
+          "properties": {
+            "authentication": {
+              "$ref": "#/definitions/Authentication"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "update_authentication"
       ],
       "properties": {

@@ -198,43 +198,6 @@ fn generate_hint_from_authentication(authentication: Authentication) -> Authenti
     }
 }
 
-fn update_authentication<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    id: usize,
-    label: String,
-    username: String,
-    password: String,
-    notes: String,
-) -> StdResult<HandleResponse> {
-    let users_store = TypedStore::<User, S>::attach(&deps.storage);
-    let mut user = users_store
-        .load(env.message.sender.0.as_bytes())
-        .unwrap_or(User {
-            authentications: vec![],
-            hints: vec![],
-            next_authentication_id: 0,
-        });
-    if id >= user.next_authentication_id {
-        return Err(StdError::generic_err("Authentication not found."));
-    }
-    user.authentications[id].label = label;
-    user.authentications[id].username = username;
-    user.authentications[id].password = password;
-    user.authentications[id].notes = notes;
-    user.hints[id] = generate_hint_from_authentication(user.authentications[id].clone());
-    TypedStoreMut::<User, S>::attach(&mut deps.storage)
-        .store(env.message.sender.0.as_bytes(), &user)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
-            authentication: user.authentications[id].clone(),
-        })?),
-    })
-}
-
 fn set_key<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
@@ -274,6 +237,43 @@ fn show<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Show {
+            authentication: user.authentications[id].clone(),
+        })?),
+    })
+}
+
+fn update_authentication<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    id: usize,
+    label: String,
+    username: String,
+    password: String,
+    notes: String,
+) -> StdResult<HandleResponse> {
+    let users_store = TypedStore::<User, S>::attach(&deps.storage);
+    let mut user = users_store
+        .load(env.message.sender.0.as_bytes())
+        .unwrap_or(User {
+            authentications: vec![],
+            hints: vec![],
+            next_authentication_id: 0,
+        });
+    if id >= user.next_authentication_id {
+        return Err(StdError::generic_err("Authentication not found."));
+    }
+    user.authentications[id].label = label;
+    user.authentications[id].username = username;
+    user.authentications[id].password = password;
+    user.authentications[id].notes = notes;
+    user.hints[id] = generate_hint_from_authentication(user.authentications[id].clone());
+    TypedStoreMut::<User, S>::attach(&mut deps.storage)
+        .store(env.message.sender.0.as_bytes(), &user)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
             authentication: user.authentications[id].clone(),
         })?),
     })
@@ -551,5 +551,103 @@ mod tests {
             })
             .unwrap()
         );
+    }
+
+    #[test]
+    fn test_update_authentication() {
+        let (_init_result, mut deps) = init_helper();
+
+        // when user has created an authentication
+        let create_authentication_message = ReceiveMsg::Create {
+            label: mock_authentication().label,
+            username: mock_authentication().username,
+            password: mock_authentication().password,
+            notes: mock_authentication().notes,
+        };
+        let receive_msg = HandleMsg::Receive {
+            sender: mock_user_address(),
+            from: mock_user_address(),
+            amount: Uint128(AMOUNT_FOR_TRANSACTION),
+            msg: to_binary(&create_authentication_message).unwrap(),
+        };
+        handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            receive_msg,
+        )
+        .unwrap();
+
+        // = when user tries to update an authentication that does not exist
+        // = * it raises an error
+        let update_msg = HandleMsg::UpdateAuthentication {
+            id: 1,
+            label: 'b'.to_string(),
+            username: 'c'.to_string(),
+            password: 'd'.to_string(),
+            notes: 'e'.to_string(),
+        };
+        let handle_result = handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg);
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Authentication not found.")
+        );
+
+        // = when user tries to update an authentication that does exist
+        // = * it updates successfully and returns the authentication in the response
+        let update_msg = HandleMsg::UpdateAuthentication {
+            id: 0,
+            label: "b123".to_string(),
+            username: "c123".to_string(),
+            password: "d123".to_string(),
+            notes: "e123".to_string(),
+        };
+        let handle_result_unwrapped =
+            handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg).unwrap();
+        let handle_result_data: HandleAnswer =
+            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
+        assert_eq!(
+            to_binary(&handle_result_data).unwrap(),
+            to_binary(&HandleAnswer::UpdateAuthentication {
+                authentication: Authentication {
+                    id: 0,
+                    label: "b123".to_string(),
+                    username: "c123".to_string(),
+                    password: "d123".to_string(),
+                    notes: "e123".to_string(),
+                },
+            })
+            .unwrap()
+        );
+
+        let set_viewing_key_msg = HandleMsg::SetViewingKey {
+            key: "bibigo".to_string(),
+            padding: None,
+        };
+        handle(
+            &mut deps,
+            mock_env(mock_user_address(), &[]),
+            set_viewing_key_msg,
+        )
+        .unwrap();
+        let query_result = query(
+            &deps,
+            QueryMsg::Hints {
+                address: mock_user_address(),
+                key: "bibigo".to_string(),
+            },
+        )
+        .unwrap();
+        let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
+        match query_answer {
+            QueryAnswer::Hints { hints } => {
+                assert_eq!(hints[0].id, 0);
+                assert_eq!(hints[0].label, "b123".to_string());
+                assert_eq!(hints[0].username, "c".to_string());
+                assert_eq!(hints[0].password, "d".to_string());
+                assert_eq!(hints[0].notes, "e".to_string());
+                assert_eq!(hints.len(), 1);
+            }
+            _ => {}
+        }
     }
 }
