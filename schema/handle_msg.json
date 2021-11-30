@@ -72,7 +72,7 @@
           "properties": {
             "id": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint64",
               "minimum": 0.0
             }
           }
@@ -97,7 +97,7 @@
           "properties": {
             "id": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint64",
               "minimum": 0.0
             },
             "label": {

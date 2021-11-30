@@ -1,5 +1,5 @@
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
-use cw_password_manager::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg};
+use cw_password_manager_btn_group::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg};
 use std::env::current_dir;
 use std::fs::create_dir_all;
 
@@ -8,6 +8,7 @@ fn main() {
     out_dir.push("schema");
     create_dir_all(&out_dir).unwrap();
     remove_schemas(&out_dir).unwrap();
+
     export_schema(&schema_for!(InitMsg), &out_dir);
     export_schema(&schema_for!(HandleMsg), &out_dir);
     export_schema(&schema_for!(HandleAnswer), &out_dir);

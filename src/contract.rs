@@ -147,7 +147,7 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
     };
     user.authentications.push(authentication.clone());
     user.hints.push(generate_hint_from_authentication(
-        user.authentications[user.next_authentication_id].clone(),
+        user.authentications[user.next_authentication_id as usize].clone(),
     ));
     user.next_authentication_id += 1;
     TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
@@ -218,7 +218,7 @@ fn set_key<S: Storage, A: Api, Q: Querier>(
 fn show<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    id: usize,
+    id: u64,
 ) -> StdResult<HandleResponse> {
     // Find or initialize User locker
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
@@ -237,7 +237,7 @@ fn show<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Show {
-            authentication: user.authentications[id].clone(),
+            authentication: user.authentications[id as usize].clone(),
         })?),
     })
 }
@@ -245,7 +245,7 @@ fn show<S: Storage, A: Api, Q: Querier>(
 fn update_authentication<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    id: usize,
+    id: u64,
     label: String,
     username: String,
     password: String,
@@ -262,11 +262,13 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
     if id >= user.next_authentication_id {
         return Err(StdError::generic_err("Authentication not found."));
     }
-    user.authentications[id].label = label;
-    user.authentications[id].username = username;
-    user.authentications[id].password = password;
-    user.authentications[id].notes = notes;
-    user.hints[id] = generate_hint_from_authentication(user.authentications[id].clone());
+    let id_as_usize: usize = id as usize;
+    user.authentications[id_as_usize].label = label;
+    user.authentications[id_as_usize].username = username;
+    user.authentications[id_as_usize].password = password;
+    user.authentications[id_as_usize].notes = notes;
+    user.hints[id_as_usize] =
+        generate_hint_from_authentication(user.authentications[id_as_usize].clone());
     TypedStoreMut::<User, S>::attach(&mut deps.storage)
         .store(env.message.sender.0.as_bytes(), &user)?;
 
@@ -274,7 +276,7 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
-            authentication: user.authentications[id].clone(),
+            authentication: user.authentications[id_as_usize].clone(),
         })?),
     })
 }
