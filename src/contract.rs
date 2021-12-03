@@ -51,12 +51,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
         HandleMsg::Show { position } => show(deps, env, position),
         HandleMsg::UpdateAuthentication {
+            id,
             position,
             label,
             username,
             password,
             notes,
-        } => update_authentication(deps, env, position, label, username, password, notes),
+        } => update_authentication(deps, env, id, position, label, username, password, notes),
     };
 
     pad_response(response)
@@ -139,6 +140,7 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
         next_authentication_position: 0,
     });
     let authentication: Authentication = Authentication {
+        id: from.to_string() + &user.next_authentication_position.to_string(),
         position: user.next_authentication_position,
         label: label,
         username: username,
@@ -163,6 +165,7 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
         )?],
         log: vec![
             log("action", "create"),
+            log("id", authentication.id),
             log("position", authentication.position),
             log("label", authentication.label),
             log("username", authentication.username),
@@ -190,6 +193,7 @@ fn generate_hint_from_authentication(authentication: Authentication) -> Authenti
         "".to_string()
     };
     Authentication {
+        id: authentication.id,
         position: authentication.position,
         label: authentication.label,
         username: hint_username,
@@ -245,6 +249,7 @@ fn show<S: Storage, A: Api, Q: Querier>(
 fn update_authentication<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
+    id: String,
     position: u64,
     label: String,
     username: String,
@@ -262,7 +267,13 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
     if position >= user.next_authentication_position {
         return Err(StdError::generic_err("Authentication not found."));
     }
+
     let position_as_usize: usize = position as usize;
+    // Ensure that the user is updating the correct authentication
+    if user.authentications[position_as_usize].id != id {
+        return Err(StdError::Unauthorized { backtrace: None });
+    }
+
     user.authentications[position_as_usize].label = label;
     user.authentications[position_as_usize].username = username;
     user.authentications[position_as_usize].password = password;
@@ -331,6 +342,7 @@ mod tests {
 
     fn mock_authentication() -> Authentication {
         Authentication {
+            id: mock_user_address().to_string() + &'0'.to_string(),
             position: 0,
             label: "Park".to_string(),
             username: "Username".to_string(),
@@ -441,6 +453,7 @@ mod tests {
             handle_result_unwrapped.log,
             vec![
                 log("action", "create"),
+                log("id", mock_user_address().to_string() + &'0'.to_string()),
                 log("position", mock_authentication().position),
                 log("label", mock_authentication().label),
                 log("username", mock_authentication().username),
@@ -544,6 +557,7 @@ mod tests {
             to_binary(&handle_result_data).unwrap(),
             to_binary(&HandleAnswer::Show {
                 authentication: Authentication {
+                    id: mock_user_address().to_string() + &'1'.to_string(),
                     position: 1,
                     label: "Apricot".to_string(),
                     username: "Seeds".to_string(),
@@ -582,6 +596,7 @@ mod tests {
         // = when user tries to update an authentication that does not exist
         // = * it raises an error
         let update_msg = HandleMsg::UpdateAuthentication {
+            id: mock_user_address().to_string() + &'1'.to_string(),
             position: 1,
             label: 'b'.to_string(),
             username: 'c'.to_string(),
@@ -595,8 +610,25 @@ mod tests {
         );
 
         // = when user tries to update an authentication that does exist
-        // = * it updates successfully and returns the authentication in the response
+        // == when user tries to update an authentication where the id does not match
         let update_msg = HandleMsg::UpdateAuthentication {
+            id: mock_buttcoin().address.to_string() + &'0'.to_string(),
+            position: 0,
+            label: "b123".to_string(),
+            username: "c123".to_string(),
+            password: "d123".to_string(),
+            notes: "e123".to_string(),
+        };
+        // == * it raises an error
+        assert_eq!(
+            handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg).unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+
+        // == when user tries to update an authentication where the id does match
+        // == * it updates successfully and returns the authentication in the response
+        let update_msg = HandleMsg::UpdateAuthentication {
+            id: mock_user_address().to_string() + &'0'.to_string(),
             position: 0,
             label: "b123".to_string(),
             username: "c123".to_string(),
@@ -611,6 +643,7 @@ mod tests {
             to_binary(&handle_result_data).unwrap(),
             to_binary(&HandleAnswer::UpdateAuthentication {
                 authentication: Authentication {
+                    id: mock_user_address().to_string() + &'0'.to_string(),
                     position: 0,
                     label: "b123".to_string(),
                     username: "c123".to_string(),
@@ -642,6 +675,10 @@ mod tests {
         let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
         match query_answer {
             QueryAnswer::Hints { hints } => {
+                assert_eq!(
+                    hints[0].id,
+                    mock_user_address().to_string() + &'0'.to_string()
+                );
                 assert_eq!(hints[0].position, 0);
                 assert_eq!(hints[0].label, "b123".to_string());
                 assert_eq!(hints[0].username, "c".to_string());

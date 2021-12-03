@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 // position will reflect the position in the array
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct Authentication {
+    pub id: String,
     pub position: u64,
     pub label: String,
     pub username: String,

@@ -27,6 +27,7 @@ pub enum HandleMsg {
         position: u64,
     },
     UpdateAuthentication {
+        id: String,
         position: u64,
         label: String,
         username: String,

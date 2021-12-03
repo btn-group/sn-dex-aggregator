@@ -64,6 +64,7 @@
     "Authentication": {
       "type": "object",
       "required": [
+        "id",
         "label",
         "notes",
         "password",
@@ -71,6 +72,9 @@
         "username"
       ],
       "properties": {
+        "id": {
+          "type": "string"
+        },
         "label": {
           "type": "string"
         },
