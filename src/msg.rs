@@ -24,10 +24,10 @@ pub enum HandleMsg {
         padding: Option<String>,
     },
     Show {
-        id: u64,
+        position: u64,
     },
     UpdateAuthentication {
-        id: u64,
+        position: u64,
         label: String,
         username: String,
         password: String,

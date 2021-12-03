@@ -5,10 +5,10 @@ use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-// id will reflect the position in the array
+// position will reflect the position in the array
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct Authentication {
-    pub id: u64,
+    pub position: u64,
     pub label: String,
     pub username: String,
     pub password: String,
@@ -24,7 +24,7 @@ pub struct SecretContract {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     pub authentications: Vec<Authentication>,
-    pub next_authentication_id: u64,
+    pub next_authentication_position: u64,
     pub hints: Vec<Authentication>,
 }
 

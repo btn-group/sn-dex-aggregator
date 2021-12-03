@@ -67,10 +67,10 @@
         "show": {
           "type": "object",
           "required": [
-            "id"
+            "position"
           ],
           "properties": {
-            "id": {
+            "position": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
@@ -88,18 +88,13 @@
         "update_authentication": {
           "type": "object",
           "required": [
-            "id",
             "label",
             "notes",
             "password",
+            "position",
             "username"
           ],
           "properties": {
-            "id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
             "label": {
               "type": "string"
             },
@@ -108,6 +103,11 @@
             },
             "password": {
               "type": "string"
+            },
+            "position": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             },
             "username": {
               "type": "string"

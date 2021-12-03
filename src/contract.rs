@@ -49,14 +49,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             from, amount, msg, ..
         } => receive(deps, env, from, amount, msg),
         HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
-        HandleMsg::Show { id } => show(deps, env, id),
+        HandleMsg::Show { position } => show(deps, env, position),
         HandleMsg::UpdateAuthentication {
-            id,
+            position,
             label,
             username,
             password,
             notes,
-        } => update_authentication(deps, env, id, label, username, password, notes),
+        } => update_authentication(deps, env, position, label, username, password, notes),
     };
 
     pad_response(response)
@@ -86,7 +86,7 @@ fn query_hints<S: Storage, A: Api, Q: Querier>(
     let user = users_store.load(address.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
         hints: vec![],
-        next_authentication_id: 0,
+        next_authentication_position: 0,
     });
     let result = QueryAnswer::Hints { hints: user.hints };
     to_binary(&result)
@@ -136,10 +136,10 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
     let mut user = users_store.load(from.0.as_bytes()).unwrap_or(User {
         authentications: vec![],
         hints: vec![],
-        next_authentication_id: 0,
+        next_authentication_position: 0,
     });
     let authentication: Authentication = Authentication {
-        id: user.next_authentication_id,
+        position: user.next_authentication_position,
         label: label,
         username: username,
         password: password,
@@ -147,9 +147,9 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
     };
     user.authentications.push(authentication.clone());
     user.hints.push(generate_hint_from_authentication(
-        user.authentications[user.next_authentication_id as usize].clone(),
+        user.authentications[user.next_authentication_position as usize].clone(),
     ));
-    user.next_authentication_id += 1;
+    user.next_authentication_position += 1;
     TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
 
     Ok(HandleResponse {
@@ -163,7 +163,7 @@ fn create_authentication<S: Storage, A: Api, Q: Querier>(
         )?],
         log: vec![
             log("action", "create"),
-            log("id", authentication.id),
+            log("position", authentication.position),
             log("label", authentication.label),
             log("username", authentication.username),
             log("password", authentication.password),
@@ -190,7 +190,7 @@ fn generate_hint_from_authentication(authentication: Authentication) -> Authenti
         "".to_string()
     };
     Authentication {
-        id: authentication.id,
+        position: authentication.position,
         label: authentication.label,
         username: hint_username,
         password: hint_password,
@@ -218,7 +218,7 @@ fn set_key<S: Storage, A: Api, Q: Querier>(
 fn show<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    id: u64,
+    position: u64,
 ) -> StdResult<HandleResponse> {
     // Find or initialize User locker
     let users_store = TypedStore::<User, S>::attach(&deps.storage);
@@ -227,9 +227,9 @@ fn show<S: Storage, A: Api, Q: Querier>(
         .unwrap_or(User {
             authentications: vec![],
             hints: vec![],
-            next_authentication_id: 0,
+            next_authentication_position: 0,
         });
-    if id >= user.next_authentication_id {
+    if position >= user.next_authentication_position {
         return Err(StdError::generic_err("Authentication not found."));
     }
 
@@ -237,7 +237,7 @@ fn show<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Show {
-            authentication: user.authentications[id as usize].clone(),
+            authentication: user.authentications[position as usize].clone(),
         })?),
     })
 }
@@ -245,7 +245,7 @@ fn show<S: Storage, A: Api, Q: Querier>(
 fn update_authentication<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    id: u64,
+    position: u64,
     label: String,
     username: String,
     password: String,
@@ -257,18 +257,18 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
         .unwrap_or(User {
             authentications: vec![],
             hints: vec![],
-            next_authentication_id: 0,
+            next_authentication_position: 0,
         });
-    if id >= user.next_authentication_id {
+    if position >= user.next_authentication_position {
         return Err(StdError::generic_err("Authentication not found."));
     }
-    let id_as_usize: usize = id as usize;
-    user.authentications[id_as_usize].label = label;
-    user.authentications[id_as_usize].username = username;
-    user.authentications[id_as_usize].password = password;
-    user.authentications[id_as_usize].notes = notes;
-    user.hints[id_as_usize] =
-        generate_hint_from_authentication(user.authentications[id_as_usize].clone());
+    let position_as_usize: usize = position as usize;
+    user.authentications[position_as_usize].label = label;
+    user.authentications[position_as_usize].username = username;
+    user.authentications[position_as_usize].password = password;
+    user.authentications[position_as_usize].notes = notes;
+    user.hints[position_as_usize] =
+        generate_hint_from_authentication(user.authentications[position_as_usize].clone());
     TypedStoreMut::<User, S>::attach(&mut deps.storage)
         .store(env.message.sender.0.as_bytes(), &user)?;
 
@@ -276,7 +276,7 @@ fn update_authentication<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
-            authentication: user.authentications[id_as_usize].clone(),
+            authentication: user.authentications[position_as_usize].clone(),
         })?),
     })
 }
@@ -331,7 +331,7 @@ mod tests {
 
     fn mock_authentication() -> Authentication {
         Authentication {
-            id: 0,
+            position: 0,
             label: "Park".to_string(),
             username: "Username".to_string(),
             password: "Password!!!".to_string(),
@@ -441,7 +441,7 @@ mod tests {
             handle_result_unwrapped.log,
             vec![
                 log("action", "create"),
-                log("id", mock_authentication().id),
+                log("position", mock_authentication().position),
                 log("label", mock_authentication().label),
                 log("username", mock_authentication().username),
                 log("password", mock_authentication().password),
@@ -449,7 +449,7 @@ mod tests {
             ],
         );
         // == * it creates the authentication for that user
-        let show_msg = HandleMsg::Show { id: 0 };
+        let show_msg = HandleMsg::Show { position: 0 };
         let handle_result_unwrapped =
             handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
         let handle_result_data: HandleAnswer =
@@ -484,7 +484,7 @@ mod tests {
         let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
         match query_answer {
             QueryAnswer::Hints { hints } => {
-                assert_eq!(hints[0].id, 0);
+                assert_eq!(hints[0].position, 0);
                 assert_eq!(hints[0].label, mock_authentication().label);
                 assert_eq!(
                     hints[0].username,
@@ -516,7 +516,7 @@ mod tests {
             }
             _ => {}
         }
-        // == * it increases the next_authentication_id by 1
+        // == * it increases the next_authentication_position by 1
         let create_authentication_message = ReceiveMsg::Create {
             label: "Apricot".to_string(),
             username: "Seeds".to_string(),
@@ -535,7 +535,7 @@ mod tests {
             receive_msg,
         )
         .unwrap();
-        let show_msg = HandleMsg::Show { id: 1 };
+        let show_msg = HandleMsg::Show { position: 1 };
         let handle_result_unwrapped =
             handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
         let handle_result_data: HandleAnswer =
@@ -544,7 +544,7 @@ mod tests {
             to_binary(&handle_result_data).unwrap(),
             to_binary(&HandleAnswer::Show {
                 authentication: Authentication {
-                    id: 1,
+                    position: 1,
                     label: "Apricot".to_string(),
                     username: "Seeds".to_string(),
                     password: "Good?".to_string(),
@@ -582,7 +582,7 @@ mod tests {
         // = when user tries to update an authentication that does not exist
         // = * it raises an error
         let update_msg = HandleMsg::UpdateAuthentication {
-            id: 1,
+            position: 1,
             label: 'b'.to_string(),
             username: 'c'.to_string(),
             password: 'd'.to_string(),
@@ -597,7 +597,7 @@ mod tests {
         // = when user tries to update an authentication that does exist
         // = * it updates successfully and returns the authentication in the response
         let update_msg = HandleMsg::UpdateAuthentication {
-            id: 0,
+            position: 0,
             label: "b123".to_string(),
             username: "c123".to_string(),
             password: "d123".to_string(),
@@ -611,7 +611,7 @@ mod tests {
             to_binary(&handle_result_data).unwrap(),
             to_binary(&HandleAnswer::UpdateAuthentication {
                 authentication: Authentication {
-                    id: 0,
+                    position: 0,
                     label: "b123".to_string(),
                     username: "c123".to_string(),
                     password: "d123".to_string(),
@@ -642,7 +642,7 @@ mod tests {
         let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
         match query_answer {
             QueryAnswer::Hints { hints } => {
-                assert_eq!(hints[0].id, 0);
+                assert_eq!(hints[0].position, 0);
                 assert_eq!(hints[0].label, "b123".to_string());
                 assert_eq!(hints[0].username, "c".to_string());
                 assert_eq!(hints[0].password, "d".to_string());
