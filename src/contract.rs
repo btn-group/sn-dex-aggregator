@@ -2,8 +2,8 @@ use crate::{
     asset::{Asset, AssetInfo},
     msg::{HandleMsg, Hop, InitMsg, NativeSwap, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
     state::{
-        delete_route_state, read_cashback, read_owner, read_route_state, read_tokens,
-        store_cashback, store_owner, store_route_state, store_tokens, RouteState,
+        delete_route_state, read_cashback, read_route_state, read_tokens, store_cashback,
+        store_route_state, store_tokens, RouteState,
     },
 };
 use cosmwasm_std::{
@@ -17,19 +17,11 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    if let Some(owner) = msg.owner {
-        store_owner(&mut deps.storage, &owner)?;
-    } else {
-        store_owner(&mut deps.storage, &env.message.sender)?;
-    }
-
     let mut output_msgs: Vec<CosmosMsg> = vec![];
-
     store_tokens(&mut deps.storage, &vec![])?;
     if let Some(tokens) = msg.register_tokens {
         output_msgs.extend(register_tokens(deps, &env, tokens)?);
     }
-
     if let Some(cashback) = msg.cashback {
         store_cashback(&mut deps.storage, &cashback)?;
         output_msgs.extend(register_tokens(
@@ -66,8 +58,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         } => handle_hop(deps, &env, from, amount),
         HandleMsg::FinalizeRoute {} => finalize_route(deps, &env),
         HandleMsg::RegisterTokens { tokens } => {
-            check_owner(deps, &env)?;
-
             let output_msgs = register_tokens(deps, &env, tokens)?;
 
             Ok(HandleResponse {
@@ -82,8 +72,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             to,
             snip20_send_msg,
         } => {
-            check_owner(deps, &env)?;
-
             let send_msg = match token {
                 Token::Snip20(Snip20Data { address, code_hash }) => vec![snip20::send_msg(
                     to,
@@ -106,22 +94,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
                 log: vec![],
                 data: None,
             })
-        }
-        HandleMsg::UpdateSettings {
-            new_owner,
-            new_cashback,
-        } => {
-            check_owner(deps, &env)?;
-
-            if let Some(new_owner) = new_owner {
-                store_owner(&mut deps.storage, &new_owner)?;
-            }
-
-            if let Some(new_cashback) = new_cashback {
-                store_cashback(&mut deps.storage, &new_cashback)?;
-            }
-
-            Ok(HandleResponse::default())
         }
     }
 }
@@ -446,18 +418,6 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
             }
         }
         None => Err(StdError::generic_err("no route to finalize")),
-    }
-}
-
-fn check_owner<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: &Env,
-) -> StdResult<()> {
-    let owner = read_owner(&deps.storage)?;
-    if owner != env.message.sender {
-        Err(StdError::unauthorized())
-    } else {
-        Ok(())
     }
 }
 
