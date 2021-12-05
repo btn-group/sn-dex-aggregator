@@ -1,8 +1,8 @@
 [package]
-name = "cw-password-manager-btn-group"
+name = "cw-sn-dex-aggregator"
 version = "1.0.0"
-description = "Password manager smart contract for the Secret network."
-repository = "https://github.com/btn-group/password-manager"
+description = "DEX aggregator smart contract for the Secret network."
+repository = "https://github.com/btn-group/sn-dex-aggregator"
 authors = ["Steven Chang <steven.chang@btn.group>"]
 edition = "2018"
 
