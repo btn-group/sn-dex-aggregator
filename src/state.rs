@@ -1,47 +1,64 @@
-use crate::constants::PREFIX_VIEW_KEY;
-use crate::viewing_key::ViewingKey;
-use cosmwasm_std::{CanonicalAddr, HumanAddr, ReadonlyStorage, Storage};
-use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
+use cosmwasm_std::{HumanAddr, StdResult, Storage};
+use cosmwasm_storage::{ReadonlySingleton, Singleton};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-// position will reflect the position in the array
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
-pub struct Authentication {
-    pub id: String,
-    pub position: u64,
-    pub label: String,
-    pub username: String,
-    pub password: String,
-    pub notes: String,
+use crate::msg::{Hop, Route};
+
+static KEY_OWNER: &[u8] = b"owner";
+
+pub fn store_owner<S: Storage>(storage: &mut S, data: &HumanAddr) -> StdResult<()> {
+    Singleton::new(storage, KEY_OWNER).save(data)
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, JsonSchema)]
+pub fn read_owner<S: Storage>(storage: &S) -> StdResult<HumanAddr> {
+    ReadonlySingleton::new(storage, KEY_OWNER).load()
+}
+
+static KEY_CASHBACK: &[u8] = b"cashback";
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct SecretContract {
     pub address: HumanAddr,
-    pub contract_hash: String,
+    pub code_hash: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct User {
-    pub authentications: Vec<Authentication>,
-    pub next_authentication_position: u64,
-    pub hints: Vec<Authentication>,
+pub fn store_cashback<S: Storage>(storage: &mut S, data: &SecretContract) -> StdResult<()> {
+    Singleton::new(storage, KEY_CASHBACK).save(data)
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct Config {
-    pub buttcoin: SecretContract,
-    pub butt_lode: SecretContract,
+pub fn read_cashback<S: Storage>(storage: &S) -> StdResult<Option<SecretContract>> {
+    ReadonlySingleton::new(storage, KEY_CASHBACK).may_load()
 }
 
-// Viewing Keys
-pub fn write_viewing_key<S: Storage>(store: &mut S, owner: &CanonicalAddr, key: &ViewingKey) {
-    let mut balance_store = PrefixedStorage::new(PREFIX_VIEW_KEY, store);
-    balance_store.set(owner.as_slice(), &key.to_hashed());
+static KEY_ROUTE_STATE: &[u8] = b"route_state";
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub struct RouteState {
+    pub is_done: bool,
+    pub current_hop: Option<Hop>,
+    pub remaining_route: Route,
 }
 
-pub fn read_viewing_key<S: Storage>(store: &S, owner: &CanonicalAddr) -> Option<Vec<u8>> {
-    let balance_store = ReadonlyPrefixedStorage::new(PREFIX_VIEW_KEY, store);
-    balance_store.get(owner.as_slice())
+pub fn store_route_state<S: Storage>(storage: &mut S, data: &RouteState) -> StdResult<()> {
+    Singleton::new(storage, KEY_ROUTE_STATE).save(data)
+}
+
+pub fn read_route_state<S: Storage>(storage: &S) -> StdResult<Option<RouteState>> {
+    ReadonlySingleton::new(storage, KEY_ROUTE_STATE).may_load()
+}
+
+pub fn delete_route_state<S: Storage>(storage: &mut S) {
+    storage.remove(KEY_ROUTE_STATE);
+}
+
+static KEY_TOKENS: &[u8] = b"tokens";
+
+pub fn store_tokens<S: Storage>(storage: &mut S, data: &Vec<HumanAddr>) -> StdResult<()> {
+    Singleton::new(storage, KEY_TOKENS).save(data)
+}
+
+pub fn read_tokens<S: Storage>(storage: &S) -> StdResult<Vec<HumanAddr>> {
+    ReadonlySingleton::new(storage, KEY_TOKENS).load()
 }

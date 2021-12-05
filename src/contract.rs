@@ -1,40 +1,49 @@
-use crate::authorize::authorize;
-use crate::constants::*;
-use crate::msg::{
-    space_pad, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveMsg,
-    ResponseStatus::Success,
+use crate::{
+    asset::{Asset, AssetInfo},
+    msg::{HandleMsg, Hop, InitMsg, NativeSwap, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
+    state::{
+        delete_route_state, read_cashback, read_owner, read_route_state, read_tokens,
+        store_cashback, store_owner, store_route_state, store_tokens, RouteState,
+    },
 };
-use crate::state::{read_viewing_key, write_viewing_key, Authentication, Config, User};
-use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 use cosmwasm_std::{
-    from_binary, log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, QueryResult, StdError, StdResult, Storage, Uint128,
+    from_binary, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse,
+    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
-use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
-    let config: Config = Config {
-        buttcoin: msg.buttcoin,
-        butt_lode: msg.butt_lode,
-    };
-    config_store.store(CONFIG_KEY, &config)?;
+    if let Some(owner) = msg.owner {
+        store_owner(&mut deps.storage, &owner)?;
+    } else {
+        store_owner(&mut deps.storage, &env.message.sender)?;
+    }
 
-    let messages = vec![snip20::register_receive_msg(
-        env.contract_code_hash.clone(),
-        None,
-        RESPONSE_BLOCK_SIZE,
-        config.buttcoin.contract_hash,
-        config.buttcoin.address,
-    )?];
+    let mut output_msgs: Vec<CosmosMsg> = vec![];
+
+    store_tokens(&mut deps.storage, &vec![])?;
+    if let Some(tokens) = msg.register_tokens {
+        output_msgs.extend(register_tokens(deps, &env, tokens)?);
+    }
+
+    if let Some(cashback) = msg.cashback {
+        store_cashback(&mut deps.storage, &cashback)?;
+        output_msgs.extend(register_tokens(
+            deps,
+            &env,
+            vec![Snip20Data {
+                address: cashback.address,
+                code_hash: cashback.code_hash,
+            }],
+        )?);
+    }
 
     Ok(InitResponse {
-        messages,
+        messages: output_msgs,
         log: vec![],
     })
 }
@@ -44,692 +53,460 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
-    let response = match msg {
+    match msg {
         HandleMsg::Receive {
-            from, amount, msg, ..
-        } => receive(deps, env, from, amount, msg),
-        HandleMsg::SetViewingKey { key, .. } => set_key(deps, env, key),
-        HandleMsg::Show { position } => show(deps, env, position),
-        HandleMsg::UpdateAuthentication {
-            id,
-            position,
-            label,
-            username,
-            password,
-            notes,
-        } => update_authentication(deps, env, id, position, label, username, password, notes),
-    };
-
-    pad_response(response)
-}
-
-pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryMsg) -> QueryResult {
-    match msg {
-        _ => viewing_keys_queries(deps, msg),
-    }
-}
-
-fn pad_response(response: StdResult<HandleResponse>) -> StdResult<HandleResponse> {
-    response.map(|mut response| {
-        response.data = response.data.map(|mut data| {
-            space_pad(RESPONSE_BLOCK_SIZE, &mut data.0);
-            data
-        });
-        response
-    })
-}
-
-fn query_hints<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    address: &HumanAddr,
-) -> StdResult<Binary> {
-    let users_store = TypedStore::<User, S>::attach(&deps.storage);
-    let user = users_store.load(address.0.as_bytes()).unwrap_or(User {
-        authentications: vec![],
-        hints: vec![],
-        next_authentication_position: 0,
-    });
-    let result = QueryAnswer::Hints { hints: user.hints };
-    to_binary(&result)
-}
-
-fn receive<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    from: HumanAddr,
-    amount: Uint128,
-    msg: Binary,
-) -> StdResult<HandleResponse> {
-    let msg: ReceiveMsg = from_binary(&msg)?;
-    match msg {
-        ReceiveMsg::Create {
-            label,
-            username,
-            password,
-            notes,
-        } => create_authentication(deps, env, from, amount, label, username, password, notes),
-    }
-}
-
-fn create_authentication<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    from: HumanAddr,
-    amount: Uint128,
-    label: String,
-    username: String,
-    password: String,
-    notes: String,
-) -> StdResult<HandleResponse> {
-    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    // Ensure that the sent tokens are Buttcoin
-    authorize(config.buttcoin.address.clone(), env.message.sender.clone())?;
-    // Ensure that amount sent in is 1 Buttcoin
-    if amount != Uint128(AMOUNT_FOR_TRANSACTION) {
-        return Err(StdError::generic_err(format!(
-            "Amount sent in: {}. Amount required {}.",
+            from: _,
+            msg: Some(msg),
             amount,
-            Uint128(AMOUNT_FOR_TRANSACTION)
-        )));
+        } => handle_first_hop(deps, &env, msg, amount),
+        HandleMsg::Receive {
+            from,
+            msg: None,
+            amount,
+        } => handle_hop(deps, &env, from, amount),
+        HandleMsg::FinalizeRoute {} => finalize_route(deps, &env),
+        HandleMsg::RegisterTokens { tokens } => {
+            check_owner(deps, &env)?;
+
+            let output_msgs = register_tokens(deps, &env, tokens)?;
+
+            Ok(HandleResponse {
+                messages: output_msgs,
+                log: vec![],
+                data: None,
+            })
+        }
+        HandleMsg::RecoverFunds {
+            token,
+            amount,
+            to,
+            snip20_send_msg,
+        } => {
+            check_owner(deps, &env)?;
+
+            let send_msg = match token {
+                Token::Snip20(Snip20Data { address, code_hash }) => vec![snip20::send_msg(
+                    to,
+                    amount,
+                    snip20_send_msg,
+                    None,
+                    256,
+                    code_hash,
+                    address,
+                )?],
+                Token::Scrt => vec![CosmosMsg::Bank(BankMsg::Send {
+                    from_address: env.contract.address,
+                    to_address: to,
+                    amount: vec![Coin::new(amount.u128(), "uscrt")],
+                })],
+            };
+
+            Ok(HandleResponse {
+                messages: send_msg,
+                log: vec![],
+                data: None,
+            })
+        }
+        HandleMsg::UpdateSettings {
+            new_owner,
+            new_cashback,
+        } => {
+            check_owner(deps, &env)?;
+
+            if let Some(new_owner) = new_owner {
+                store_owner(&mut deps.storage, &new_owner)?;
+            }
+
+            if let Some(new_cashback) = new_cashback {
+                store_cashback(&mut deps.storage, &new_cashback)?;
+            }
+
+            Ok(HandleResponse::default())
+        }
+    }
+}
+
+fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+    msg: Binary,
+    amount: Uint128,
+) -> StdResult<HandleResponse> {
+    // This is the first msg from the user, with the entire route details
+    // 1. save the remaining route to state (e.g. if the route is X/Y -> Y/Z -> Z->W then save Y/Z -> Z/W to state)
+    // 2. send `amount` X to pair X/Y
+    // 3. call FinalizeRoute to make sure everything went ok, otherwise revert the tx
+
+    let Route {
+        mut hops,
+        to,
+        expected_return,
+    } = from_binary(&msg)?;
+
+    if hops.len() < 2 {
+        return Err(StdError::generic_err("route must be at least 2 hops"));
     }
 
-    let users_store = TypedStore::<User, S>::attach(&deps.storage);
-    let mut user = users_store.load(from.0.as_bytes()).unwrap_or(User {
-        authentications: vec![],
-        hints: vec![],
-        next_authentication_position: 0,
-    });
-    let authentication: Authentication = Authentication {
-        id: from.to_string() + &user.next_authentication_position.to_string(),
-        position: user.next_authentication_position,
-        label: label,
-        username: username,
-        password: password,
-        notes: notes,
+    // uscrt can only be the input or output token
+    // check that uscrt is not the input token for any hop that is not the first hop
+    // (we don't need to check if it's the output token because it's handled in the swap_pair contract)
+    for i in 1..(hops.len() - 1) {
+        match hops[i].from_token {
+            Token::Scrt => {
+                return Err(StdError::generic_err(
+                    "cannot route via uscrt. uscrt can only be route input token or output token.",
+                ))
+            }
+            _ => continue,
+        }
+    }
+
+    let first_hop: Hop = hops.pop_front().unwrap(); // unwrap is cool because `hops.len() >= 2`
+
+    let received_first_hop: bool = match first_hop.from_token {
+        Token::Snip20(Snip20Data {
+            ref address,
+            code_hash: _,
+        }) => env.message.sender == *address,
+        Token::Scrt => {
+            env.message.sent_funds.len() == 1
+                && env.message.sent_funds[0].amount == amount
+                && env.message.sent_funds[0].denom == "uscrt"
+        }
     };
-    user.authentications.push(authentication.clone());
-    user.hints.push(generate_hint_from_authentication(
-        user.authentications[user.next_authentication_position as usize].clone(),
-    ));
-    user.next_authentication_position += 1;
-    TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
+
+    if !received_first_hop {
+        return Err(StdError::generic_err(
+            "route can only be initiated by sending here the token of the first hop",
+        ));
+    }
+
+    store_route_state(
+        &mut deps.storage,
+        &RouteState {
+            is_done: false,
+            current_hop: Some(first_hop.clone()),
+            remaining_route: Route {
+                hops, // hops was mutated earlier when we did `hops.pop_front()`
+                expected_return,
+                to,
+            },
+        },
+    )?;
+
+    let mut msgs = vec![];
+
+    match first_hop.from_token {
+        Token::Snip20(Snip20Data { address, code_hash }) => {
+            // first hop is a snip20
+            msgs.push(snip20::send_msg(
+                first_hop.pair_address,
+                amount,
+                // build swap msg for the next hop
+                Some(to_binary(&Snip20Swap::Swap {
+                    // set expected_return to None because we don't care about slippage mid-route
+                    expected_return: None,
+                    // set the recepient of the swap to be this contract (the router)
+                    to: Some(env.contract.address.clone()),
+                })?),
+                None,
+                256,
+                code_hash,
+                address,
+            )?);
+        }
+        Token::Scrt => {
+            // first hop is SCRT
+            msgs.push(
+                // build swap msg for the next hop
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: first_hop.pair_address,
+                    callback_code_hash: first_hop.pair_code_hash,
+                    msg: to_binary(&NativeSwap::Swap {
+                        offer_asset: Asset {
+                            amount,
+                            info: AssetInfo::NativeToken {
+                                denom: "uscrt".into(),
+                            },
+                        },
+                        // set expected_return to None because we don't care about slippage mid-route
+                        expected_return: None,
+                        // set the recepient of the swap to be this contract (the router)
+                        to: Some(env.contract.address.clone()),
+                    })?,
+                    send: vec![Coin::new(amount.u128(), "uscrt")],
+                }),
+            );
+        }
+    }
+
+    msgs.push(
+        // finalize the route at the end, to make sure the route was completed successfully
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: env.contract.address.clone(),
+            callback_code_hash: env.contract_code_hash.clone(),
+            msg: to_binary(&HandleMsg::FinalizeRoute {})?,
+            send: vec![],
+        }),
+    );
 
     Ok(HandleResponse {
-        messages: vec![snip20::transfer_msg(
-            config.butt_lode.address,
-            Uint128(AMOUNT_FOR_TRANSACTION),
-            None,
-            RESPONSE_BLOCK_SIZE,
-            config.buttcoin.contract_hash,
-            config.buttcoin.address,
-        )?],
-        log: vec![
-            log("action", "create"),
-            log("id", authentication.id),
-            log("position", authentication.position),
-            log("label", authentication.label),
-            log("username", authentication.username),
-            log("password", authentication.password),
-            log("notes", authentication.notes),
-        ],
+        messages: msgs,
+        log: vec![],
         data: None,
     })
 }
 
-fn generate_hint_from_authentication(authentication: Authentication) -> Authentication {
-    let hint_username: String = if authentication.username.len() > 0 {
-        authentication.username.chars().nth(0).unwrap().to_string()
-    } else {
-        "".to_string()
-    };
-    let hint_password: String = if authentication.password.len() > 0 {
-        authentication.password.chars().nth(0).unwrap().to_string()
-    } else {
-        "".to_string()
-    };
-    let hint_notes: String = if authentication.notes.len() > 0 {
-        authentication.notes.chars().nth(0).unwrap().to_string()
-    } else {
-        "".to_string()
-    };
-    Authentication {
-        id: authentication.id,
-        position: authentication.position,
-        label: authentication.label,
-        username: hint_username,
-        password: hint_password,
-        notes: hint_notes,
-    }
-}
-
-fn set_key<S: Storage, A: Api, Q: Querier>(
+fn handle_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
-    key: String,
+    env: &Env,
+    from: HumanAddr,
+    amount: Uint128,
 ) -> StdResult<HandleResponse> {
-    let vk = ViewingKey(key);
+    // This is a receive msg somewhere along the route
+    // 1. load route from state (Y/Z -> Z/W)
+    // 2. save the remaining route to state (Z/W)
+    // 3. send `amount` Y to pair Y/Z
 
-    let message_sender = deps.api.canonical_address(&env.message.sender)?;
-    write_viewing_key(&mut deps.storage, &message_sender, &vk);
+    // 1'. load route from state (Z/W)
+    // 2'. this is the last hop so delete the entire route state
+    // 3'. send `amount` Z to pair Z/W with recepient `to`
+    match read_route_state(&deps.storage)? {
+        Some(RouteState {
+            is_done,
+            current_hop,
+            remaining_route:
+                Route {
+                    mut hops,
+                    expected_return,
+                    to,
+                },
+        }) => {
+            let next_hop: Hop = match hops.pop_front() {
+                Some(next_hop) => next_hop,
+                None => return Err(StdError::generic_err("route must be at least 1 hop")),
+            };
 
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::SetViewingKey { status: Success })?),
-    })
+            let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
+                Token::Snip20(Snip20Data { address, code_hash }) => (address, code_hash),
+                Token::Scrt => {
+                    return Err(StdError::generic_err(
+                        "weird. cannot route via uscrt. uscrt can only be route input token or output token.",
+                        ));
+                }
+            };
+
+            let from_pair_of_current_hop = match current_hop {
+                Some(Hop {
+                    from_token: _,
+                    pair_code_hash: _,
+                    ref pair_address,
+                }) => *pair_address == from,
+                None => false,
+            };
+
+            if env.message.sender != from_token_address || !from_pair_of_current_hop {
+                return Err(StdError::generic_err(
+                    "route can only be called by receiving the token of the next hop from the previous pair",
+                ));
+            }
+
+            let mut is_done = false;
+            let mut msgs = vec![];
+            let mut current_hop = Some(next_hop.clone());
+            if hops.len() == 0 {
+                // last hop
+                // 1. set is_done to true for FinalizeRoute
+                // 2. set expected_return for the final swap
+                // 3. set the recipient of the final swap to be the user
+                is_done = true;
+                current_hop = None;
+                msgs.push(snip20::send_msg(
+                    next_hop.clone().pair_address,
+                    amount,
+                    Some(to_binary(&Snip20Swap::Swap {
+                        expected_return,
+                        to: Some(to.clone()),
+                    })?),
+                    None,
+                    256,
+                    from_token_code_hash,
+                    from_token_address,
+                )?);
+            } else {
+                // not last hop
+                // 1. set expected_return to None because we don't care about slippage mid-route
+                // 2. set the recipient of the swap to be this contract (the router)
+                msgs.push(snip20::send_msg(
+                    next_hop.clone().pair_address,
+                    amount,
+                    Some(to_binary(&Snip20Swap::Swap {
+                        expected_return: None,
+                        to: Some(env.contract.address.clone()),
+                    })?),
+                    None,
+                    256,
+                    from_token_code_hash,
+                    from_token_address,
+                )?);
+            }
+
+            store_route_state(
+                &mut deps.storage,
+                &RouteState {
+                    is_done,
+                    current_hop,
+                    remaining_route: Route {
+                        hops, // hops was mutated earlier when we did `hops.pop_front()`
+                        expected_return,
+                        to,
+                    },
+                },
+            )?;
+
+            Ok(HandleResponse {
+                messages: msgs,
+                log: vec![],
+                data: None,
+            })
+        }
+        None => Err(StdError::generic_err("cannot find route")),
+    }
 }
 
-fn show<S: Storage, A: Api, Q: Querier>(
+fn finalize_route<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
-    position: u64,
+    env: &Env,
 ) -> StdResult<HandleResponse> {
-    // Find or initialize User locker
-    let users_store = TypedStore::<User, S>::attach(&deps.storage);
-    let user = users_store
-        .load(env.message.sender.0.as_bytes())
-        .unwrap_or(User {
-            authentications: vec![],
-            hints: vec![],
-            next_authentication_position: 0,
-        });
-    if position >= user.next_authentication_position {
-        return Err(StdError::generic_err("Authentication not found."));
-    }
+    match read_route_state(&deps.storage)? {
+        Some(RouteState {
+            is_done,
+            current_hop,
+            remaining_route,
+        }) => {
+            // this function is called only by the route creation function
+            // it is intended to always make sure that the route was completed successfully
+            // otherwise we revert the transaction
 
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::Show {
-            authentication: user.authentications[position as usize].clone(),
-        })?),
-    })
+            if env.contract.address != env.message.sender {
+                return Err(StdError::unauthorized());
+            }
+            if !is_done {
+                return Err(StdError::generic_err(format!(
+                    "cannot finalize: route is not done: {:?}",
+                    remaining_route
+                )));
+            }
+            if remaining_route.hops.len() != 0 {
+                return Err(StdError::generic_err(format!(
+                    "cannot finalize: route still contains hops: {:?}",
+                    remaining_route
+                )));
+            }
+            if current_hop != None {
+                return Err(StdError::generic_err(format!(
+                    "cannot finalize: route still processing hops: {:?}",
+                    remaining_route
+                )));
+            }
+
+            delete_route_state(&mut deps.storage);
+
+            if let Some(cashback) = read_cashback(&deps.storage)? {
+                let balance = snip20::balance_query(
+                    &deps.querier,
+                    env.contract.address.clone(),
+                    "SecretSwap Router".into(),
+                    256,
+                    cashback.code_hash.clone(),
+                    cashback.address.clone(),
+                )?;
+
+                let mut messages = vec![];
+                if balance.amount.u128() > 0 {
+                    let msg = snip20::send_msg(
+                        remaining_route.to,
+                        balance.amount,
+                        None,
+                        None,
+                        256,
+                        cashback.code_hash,
+                        cashback.address,
+                    )?;
+                    messages.push(msg);
+                }
+
+                Ok(HandleResponse {
+                    messages,
+                    log: vec![],
+                    data: None,
+                })
+            } else {
+                Ok(HandleResponse::default())
+            }
+        }
+        None => Err(StdError::generic_err("no route to finalize")),
+    }
 }
 
-fn update_authentication<S: Storage, A: Api, Q: Querier>(
+fn check_owner<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
-    id: String,
-    position: u64,
-    label: String,
-    username: String,
-    password: String,
-    notes: String,
-) -> StdResult<HandleResponse> {
-    let users_store = TypedStore::<User, S>::attach(&deps.storage);
-    let mut user = users_store
-        .load(env.message.sender.0.as_bytes())
-        .unwrap_or(User {
-            authentications: vec![],
-            hints: vec![],
-            next_authentication_position: 0,
-        });
-    if position >= user.next_authentication_position {
-        return Err(StdError::generic_err("Authentication not found."));
+    env: &Env,
+) -> StdResult<()> {
+    let owner = read_owner(&deps.storage)?;
+    if owner != env.message.sender {
+        Err(StdError::unauthorized())
+    } else {
+        Ok(())
     }
-
-    let position_as_usize: usize = position as usize;
-    // Ensure that the user is updating the correct authentication
-    if user.authentications[position_as_usize].id != id {
-        return Err(StdError::Unauthorized { backtrace: None });
-    }
-
-    user.authentications[position_as_usize].label = label;
-    user.authentications[position_as_usize].username = username;
-    user.authentications[position_as_usize].password = password;
-    user.authentications[position_as_usize].notes = notes;
-    user.hints[position_as_usize] =
-        generate_hint_from_authentication(user.authentications[position_as_usize].clone());
-    TypedStoreMut::<User, S>::attach(&mut deps.storage)
-        .store(env.message.sender.0.as_bytes(), &user)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&HandleAnswer::UpdateAuthentication {
-            authentication: user.authentications[position_as_usize].clone(),
-        })?),
-    })
 }
 
-fn viewing_keys_queries<S: Storage, A: Api, Q: Querier>(
+fn register_tokens<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+    tokens: Vec<Snip20Data>,
+) -> StdResult<Vec<CosmosMsg>> {
+    let mut registered_tokens = read_tokens(&deps.storage)?;
+    let mut output_msgs = vec![];
+
+    for token in tokens {
+        let address = token.address;
+        let code_hash = token.code_hash;
+
+        if registered_tokens.contains(&address) {
+            continue;
+        }
+        registered_tokens.push(address.clone());
+
+        output_msgs.push(snip20::register_receive_msg(
+            env.contract_code_hash.clone(),
+            None,
+            256,
+            code_hash.clone(),
+            address.clone(),
+        )?);
+        output_msgs.push(snip20::set_viewing_key_msg(
+            "SecretSwap Router".into(),
+            None,
+            256,
+            code_hash.clone(),
+            address.clone(),
+        )?);
+    }
+
+    store_tokens(&mut deps.storage, &registered_tokens)?;
+
+    return Ok(output_msgs);
+}
+
+pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
-) -> QueryResult {
-    let (addresses, key) = msg.get_validation_params();
-
-    for address in addresses {
-        let canonical_addr = deps.api.canonical_address(address)?;
-
-        let expected_key = read_viewing_key(&deps.storage, &canonical_addr);
-
-        if expected_key.is_none() {
-            // Checking the key will take significant time. We don't want to exit immediately if it isn't set
-            // in a way which will allow to time the command and determine if a viewing key doesn't exist
-            key.check_viewing_key(&[0u8; VIEWING_KEY_SIZE]);
-        } else if key.check_viewing_key(expected_key.unwrap().as_slice()) {
-            return match msg {
-                // Base
-                QueryMsg::Hints { address, .. } => query_hints(deps, &address),
-            };
+) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::SupportedTokens {} => {
+            let tokens = read_tokens(&deps.storage)?;
+            Ok(to_binary(&tokens)?)
         }
-    }
-
-    to_binary(&QueryAnswer::ViewingKeyError {
-        msg: "Wrong viewing key for this address or viewing key not set".to_string(),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::SecretContract;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
-
-    // === HELPERS ===
-    fn init_helper() -> (
-        StdResult<InitResponse>,
-        Extern<MockStorage, MockApi, MockQuerier>,
-    ) {
-        let env = mock_env(mock_user_address(), &[]);
-        let mut deps = mock_dependencies(20, &[]);
-        let msg = InitMsg {
-            buttcoin: mock_buttcoin(),
-            butt_lode: mock_butt_lode(),
-        };
-        (init(&mut deps, env.clone(), msg), deps)
-    }
-
-    fn mock_authentication() -> Authentication {
-        Authentication {
-            id: mock_user_address().to_string() + &'0'.to_string(),
-            position: 0,
-            label: "Park".to_string(),
-            username: "Username".to_string(),
-            password: "Password!!!".to_string(),
-            notes: "dumb shit variant".to_string(),
-        }
-    }
-
-    fn mock_buttcoin() -> SecretContract {
-        SecretContract {
-            address: HumanAddr::from("token-address"),
-            contract_hash: "token-contract-hash".to_string(),
-        }
-    }
-
-    fn mock_butt_lode() -> SecretContract {
-        SecretContract {
-            address: HumanAddr::from("token-address"),
-            contract_hash: "token-contract-hash".to_string(),
-        }
-    }
-
-    fn mock_user_address() -> HumanAddr {
-        HumanAddr::from("gary")
-    }
-
-    // === TESTS ===
-    #[test]
-    fn test_create() {
-        let (_init_result, mut deps) = init_helper();
-
-        // when creating an authentication
-        let create_authentication_message = ReceiveMsg::Create {
-            label: mock_authentication().label,
-            username: mock_authentication().username,
-            password: mock_authentication().password,
-            notes: mock_authentication().notes,
-        };
-        let receive_msg = HandleMsg::Receive {
-            sender: mock_user_address(),
-            from: mock_user_address(),
-            amount: Uint128(AMOUNT_FOR_TRANSACTION),
-            msg: to_binary(&create_authentication_message).unwrap(),
-        };
-
-        // = when user sends in a token that is not Buttcoin
-        // = * it raises an error
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_user_address(), &[]),
-            receive_msg.clone(),
-        );
-        assert_eq!(
-            handle_result.unwrap_err(),
-            StdError::Unauthorized { backtrace: None }
-        );
-
-        // = when user sends in Buttcoin
-        // == when user sends in the wrong amount
-        let receive_msg = HandleMsg::Receive {
-            sender: mock_user_address(),
-            from: mock_user_address(),
-            amount: Uint128(AMOUNT_FOR_TRANSACTION + 555),
-            msg: to_binary(&create_authentication_message).unwrap(),
-        };
-        // == * it raises an error
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            receive_msg,
-        );
-        assert_eq!(
-            handle_result.unwrap_err(),
-            StdError::generic_err(format!(
-                "Amount sent in: {}. Amount required {}.",
-                AMOUNT_FOR_TRANSACTION + 555,
-                Uint128(AMOUNT_FOR_TRANSACTION)
-            ))
-        );
-        // == when user sends in the right amount
-        let receive_msg = HandleMsg::Receive {
-            sender: mock_user_address(),
-            from: mock_user_address(),
-            amount: Uint128(AMOUNT_FOR_TRANSACTION),
-            msg: to_binary(&create_authentication_message).unwrap(),
-        };
-        // == * it sends the BUTT to the BUTT lode
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            receive_msg,
-        );
-        let handle_result_unwrapped = handle_result.unwrap();
-        assert_eq!(
-            handle_result_unwrapped.messages,
-            vec![snip20::transfer_msg(
-                mock_butt_lode().address,
-                Uint128(AMOUNT_FOR_TRANSACTION),
-                None,
-                RESPONSE_BLOCK_SIZE,
-                mock_buttcoin().contract_hash,
-                mock_buttcoin().address,
-            )
-            .unwrap()],
-        );
-        // == * it specifies the correct log details
-        assert_eq!(
-            handle_result_unwrapped.log,
-            vec![
-                log("action", "create"),
-                log("id", mock_user_address().to_string() + &'0'.to_string()),
-                log("position", mock_authentication().position),
-                log("label", mock_authentication().label),
-                log("username", mock_authentication().username),
-                log("password", mock_authentication().password),
-                log("notes", mock_authentication().notes),
-            ],
-        );
-        // == * it creates the authentication for that user
-        let show_msg = HandleMsg::Show { position: 0 };
-        let handle_result_unwrapped =
-            handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
-        let handle_result_data: HandleAnswer =
-            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
-        assert_eq!(
-            to_binary(&handle_result_data).unwrap(),
-            to_binary(&HandleAnswer::Show {
-                authentication: mock_authentication(),
-            })
-            .unwrap()
-        );
-
-        // == * it creates the hint for that user
-        let set_viewing_key_msg = HandleMsg::SetViewingKey {
-            key: "bibigo".to_string(),
-            padding: None,
-        };
-        handle(
-            &mut deps,
-            mock_env(mock_user_address(), &[]),
-            set_viewing_key_msg,
-        )
-        .unwrap();
-        let query_result = query(
-            &deps,
-            QueryMsg::Hints {
-                address: mock_user_address(),
-                key: "bibigo".to_string(),
-            },
-        )
-        .unwrap();
-        let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
-        match query_answer {
-            QueryAnswer::Hints { hints } => {
-                assert_eq!(hints[0].position, 0);
-                assert_eq!(hints[0].label, mock_authentication().label);
-                assert_eq!(
-                    hints[0].username,
-                    mock_authentication()
-                        .username
-                        .chars()
-                        .nth(0)
-                        .unwrap()
-                        .to_string()
-                );
-                assert_eq!(
-                    hints[0].password,
-                    mock_authentication()
-                        .password
-                        .chars()
-                        .nth(0)
-                        .unwrap()
-                        .to_string()
-                );
-                assert_eq!(
-                    hints[0].notes,
-                    mock_authentication()
-                        .notes
-                        .chars()
-                        .nth(0)
-                        .unwrap()
-                        .to_string()
-                );
-            }
-            _ => {}
-        }
-        // == * it increases the next_authentication_position by 1
-        let create_authentication_message = ReceiveMsg::Create {
-            label: "Apricot".to_string(),
-            username: "Seeds".to_string(),
-            password: "Good?".to_string(),
-            notes: "xxx".to_string(),
-        };
-        let receive_msg = HandleMsg::Receive {
-            sender: mock_user_address(),
-            from: mock_user_address(),
-            amount: Uint128(AMOUNT_FOR_TRANSACTION),
-            msg: to_binary(&create_authentication_message).unwrap(),
-        };
-        handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            receive_msg,
-        )
-        .unwrap();
-        let show_msg = HandleMsg::Show { position: 1 };
-        let handle_result_unwrapped =
-            handle(&mut deps, mock_env(mock_user_address(), &[]), show_msg).unwrap();
-        let handle_result_data: HandleAnswer =
-            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
-        assert_eq!(
-            to_binary(&handle_result_data).unwrap(),
-            to_binary(&HandleAnswer::Show {
-                authentication: Authentication {
-                    id: mock_user_address().to_string() + &'1'.to_string(),
-                    position: 1,
-                    label: "Apricot".to_string(),
-                    username: "Seeds".to_string(),
-                    password: "Good?".to_string(),
-                    notes: "xxx".to_string()
-                },
-            })
-            .unwrap()
-        );
-    }
-
-    #[test]
-    fn test_update_authentication() {
-        let (_init_result, mut deps) = init_helper();
-
-        // when user has created an authentication
-        let create_authentication_message = ReceiveMsg::Create {
-            label: mock_authentication().label,
-            username: mock_authentication().username,
-            password: mock_authentication().password,
-            notes: mock_authentication().notes,
-        };
-        let receive_msg = HandleMsg::Receive {
-            sender: mock_user_address(),
-            from: mock_user_address(),
-            amount: Uint128(AMOUNT_FOR_TRANSACTION),
-            msg: to_binary(&create_authentication_message).unwrap(),
-        };
-        handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            receive_msg,
-        )
-        .unwrap();
-
-        // = when user tries to update an authentication that does not exist
-        // = * it raises an error
-        let update_msg = HandleMsg::UpdateAuthentication {
-            id: mock_user_address().to_string() + &'1'.to_string(),
-            position: 1,
-            label: 'b'.to_string(),
-            username: 'c'.to_string(),
-            password: 'd'.to_string(),
-            notes: 'e'.to_string(),
-        };
-        let handle_result = handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg);
-        assert_eq!(
-            handle_result.unwrap_err(),
-            StdError::generic_err("Authentication not found.")
-        );
-
-        // = when user tries to update an authentication that does exist
-        // == when user tries to update an authentication where the id does not match
-        let update_msg = HandleMsg::UpdateAuthentication {
-            id: mock_buttcoin().address.to_string() + &'0'.to_string(),
-            position: 0,
-            label: "b123".to_string(),
-            username: "c123".to_string(),
-            password: "d123".to_string(),
-            notes: "e123".to_string(),
-        };
-        // == * it raises an error
-        assert_eq!(
-            handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg).unwrap_err(),
-            StdError::Unauthorized { backtrace: None }
-        );
-
-        // == when user tries to update an authentication where the id does match
-        // == * it updates successfully and returns the authentication in the response
-        let update_msg = HandleMsg::UpdateAuthentication {
-            id: mock_user_address().to_string() + &'0'.to_string(),
-            position: 0,
-            label: "b123".to_string(),
-            username: "c123".to_string(),
-            password: "d123".to_string(),
-            notes: "e123".to_string(),
-        };
-        let handle_result_unwrapped =
-            handle(&mut deps, mock_env(mock_user_address(), &[]), update_msg).unwrap();
-        let handle_result_data: HandleAnswer =
-            from_binary(&handle_result_unwrapped.data.unwrap()).unwrap();
-        assert_eq!(
-            to_binary(&handle_result_data).unwrap(),
-            to_binary(&HandleAnswer::UpdateAuthentication {
-                authentication: Authentication {
-                    id: mock_user_address().to_string() + &'0'.to_string(),
-                    position: 0,
-                    label: "b123".to_string(),
-                    username: "c123".to_string(),
-                    password: "d123".to_string(),
-                    notes: "e123".to_string(),
-                },
-            })
-            .unwrap()
-        );
-
-        let set_viewing_key_msg = HandleMsg::SetViewingKey {
-            key: "bibigo".to_string(),
-            padding: None,
-        };
-        handle(
-            &mut deps,
-            mock_env(mock_user_address(), &[]),
-            set_viewing_key_msg,
-        )
-        .unwrap();
-        let query_result = query(
-            &deps,
-            QueryMsg::Hints {
-                address: mock_user_address(),
-                key: "bibigo".to_string(),
-            },
-        )
-        .unwrap();
-        let query_answer: QueryAnswer = from_binary(&query_result).unwrap();
-        match query_answer {
-            QueryAnswer::Hints { hints } => {
-                assert_eq!(
-                    hints[0].id,
-                    mock_user_address().to_string() + &'0'.to_string()
-                );
-                assert_eq!(hints[0].position, 0);
-                assert_eq!(hints[0].label, "b123".to_string());
-                assert_eq!(hints[0].username, "c".to_string());
-                assert_eq!(hints[0].password, "d".to_string());
-                assert_eq!(hints[0].notes, "e".to_string());
-                assert_eq!(hints.len(), 1);
-            }
-            _ => {}
-        }
-    }
-
-    #[test]
-    fn test_handle_set_viewing_key() {
-        let (init_result, mut deps) = init_helper();
-        assert!(
-            init_result.is_ok(),
-            "Init failed: {}",
-            init_result.err().unwrap()
-        );
-
-        // Set VK
-        let handle_msg = HandleMsg::SetViewingKey {
-            key: "hi lol".to_string(),
-            padding: None,
-        };
-        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg);
-        let unwrapped_result: HandleAnswer =
-            from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
-        assert_eq!(
-            to_binary(&unwrapped_result).unwrap(),
-            to_binary(&HandleAnswer::SetViewingKey { status: Success }).unwrap(),
-        );
-
-        // Set valid VK
-        let actual_vk = ViewingKey("x".to_string().repeat(VIEWING_KEY_SIZE));
-        let handle_msg = HandleMsg::SetViewingKey {
-            key: actual_vk.0.clone(),
-            padding: None,
-        };
-        let handle_result = handle(&mut deps, mock_env("bob", &[]), handle_msg);
-        let unwrapped_result: HandleAnswer =
-            from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
-        assert_eq!(
-            to_binary(&unwrapped_result).unwrap(),
-            to_binary(&HandleAnswer::SetViewingKey { status: Success }).unwrap(),
-        );
-        let bob_canonical = deps
-            .api
-            .canonical_address(&HumanAddr("bob".to_string()))
-            .unwrap();
-        let saved_vk = read_viewing_key(&deps.storage, &bob_canonical).unwrap();
-        assert!(actual_vk.check_viewing_key(&saved_vk));
     }
 }
