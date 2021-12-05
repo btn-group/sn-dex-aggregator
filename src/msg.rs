@@ -1,97 +1,140 @@
-use crate::state::{Authentication, SecretContract};
-use crate::viewing_key::ViewingKey;
+use crate::asset::{Asset, AssetInfo};
+use crate::state::SecretContract;
+use cosmwasm_std::Decimal;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InitMsg {
-    pub buttcoin: SecretContract,
-    pub butt_lode: SecretContract,
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PairHandleMsg {
+    Swap {
+        offer_asset: Asset,
+        belief_price: Option<Decimal>,
+        max_spread: Option<Decimal>,
+        to: Option<HumanAddr>,
+    },
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PairCw20HookMsg {
+    Swap {
+        belief_price: Option<Decimal>,
+        max_spread: Option<Decimal>,
+        to: Option<HumanAddr>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FactoryQueryMsg {
+    Pair { asset_infos: [AssetInfo; 2] },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PairQueryMsg {
+    Simulation { offer_asset: Asset },
+    ReverseSimulation { ask_asset: Asset },
+}
+
+/// SimulationResponse returns swap simulation response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct SimulationResponse {
+    pub return_amount: Uint128,
+    pub spread_amount: Uint128,
+    pub commission_amount: Uint128,
+}
+
+/// ReverseSimulationResponse returns reverse swap simulation response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ReverseSimulationResponse {
+    pub offer_amount: Uint128,
+    pub spread_amount: Uint128,
+    pub commission_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct InitMsg {
+    pub register_tokens: Option<Vec<Snip20Data>>,
+    pub cashback: Option<SecretContract>,
+    pub owner: Option<HumanAddr>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Hop {
+    pub from_token: Token,
+    pub pair_address: HumanAddr,
+    pub pair_code_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Route {
+    pub hops: VecDeque<Hop>,
+    pub expected_return: Option<Uint128>,
+    pub to: HumanAddr,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Snip20Data {
+    pub address: HumanAddr,
+    pub code_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Token {
+    Snip20(Snip20Data),
+    Scrt,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     Receive {
-        sender: HumanAddr,
         from: HumanAddr,
+        msg: Option<Binary>,
         amount: Uint128,
-        msg: Binary,
     },
-    SetViewingKey {
-        key: String,
-        padding: Option<String>,
+    FinalizeRoute {},
+    RegisterTokens {
+        tokens: Vec<Snip20Data>,
     },
-    Show {
-        position: u64,
+    RecoverFunds {
+        token: Token,
+        amount: Uint128,
+        to: HumanAddr,
+        snip20_send_msg: Option<Binary>,
     },
-    UpdateAuthentication {
-        id: String,
-        position: u64,
-        label: String,
-        username: String,
-        password: String,
-        notes: String,
+    UpdateSettings {
+        new_owner: Option<HumanAddr>,
+        new_cashback: Option<SecretContract>,
     },
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
-pub enum HandleAnswer {
-    SetViewingKey { status: ResponseStatus },
-    Show { authentication: Authentication },
-    UpdateAuthentication { authentication: Authentication },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    Hints { address: HumanAddr, key: String },
+    SupportedTokens {},
 }
 
-impl QueryMsg {
-    pub fn get_validation_params(&self) -> (Vec<&HumanAddr>, ViewingKey) {
-        match self {
-            Self::Hints { address, key, .. } => (vec![address], ViewingKey(key.clone())),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryAnswer {
-    Hints { hints: Vec<Authentication> },
-    ViewingKeyError { msg: String },
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
-#[serde(rename_all = "snake_case")]
-pub enum ReceiveMsg {
-    Create {
-        label: String,
-        username: String,
-        password: String,
-        notes: String,
+pub enum Snip20Swap {
+    Swap {
+        expected_return: Option<Uint128>,
+        to: Option<HumanAddr>,
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ResponseStatus {
-    Success,
-}
-
-// Take a Vec<u8> and pad it up to a multiple of `block_size`, using spaces at the end.
-pub fn space_pad(block_size: usize, message: &mut Vec<u8>) -> &mut Vec<u8> {
-    let len = message.len();
-    let surplus = len % block_size;
-    if surplus == 0 {
-        return message;
-    }
-
-    let missing = block_size - surplus;
-    message.reserve(missing);
-    message.extend(std::iter::repeat(b' ').take(missing));
-    message
+pub enum NativeSwap {
+    Swap {
+        offer_asset: Asset,
+        expected_return: Option<Uint128>,
+        to: Option<HumanAddr>,
+    },
 }
