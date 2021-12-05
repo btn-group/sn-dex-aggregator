@@ -1,5 +1,5 @@
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
-use cw_password_manager_btn_group::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg};
+use cw_sn_dex_aggregator::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg};
 use std::env::current_dir;
 use std::fs::create_dir_all;
 

@@ -168,7 +168,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cw-password-manager-btn-group"
+name = "cw-sn-dex-aggregator"
 version = "1.0.0"
 dependencies = [
  "cosmwasm-schema",
