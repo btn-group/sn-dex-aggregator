@@ -5,30 +5,13 @@
     {
       "type": "object",
       "required": [
-        "hints"
+        "supported_tokens"
       ],
       "properties": {
-        "hints": {
-          "type": "object",
-          "required": [
-            "address",
-            "key"
-          ],
-          "properties": {
-            "address": {
-              "$ref": "#/definitions/HumanAddr"
-            },
-            "key": {
-              "type": "string"
-            }
-          }
+        "supported_tokens": {
+          "type": "object"
         }
       }
     }
-  ],
-  "definitions": {
-    "HumanAddr": {
-      "type": "string"
-    }
-  }
+  ]
 }

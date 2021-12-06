@@ -1,5 +1,4 @@
-use std::fmt;
-
+use crate::querier::{query_balance, query_token_balance};
 use cosmwasm_std::{
     to_binary, Api, BankMsg, CanonicalAddr, Coin, CosmosMsg, Env, Extern, HumanAddr, Querier,
     StdError, StdResult, Storage, Uint128, WasmMsg,
@@ -7,8 +6,7 @@ use cosmwasm_std::{
 use schemars::JsonSchema;
 use secret_toolkit::snip20::HandleMsg;
 use serde::{Deserialize, Serialize};
-
-use crate::querier::{query_balance, query_token_balance};
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Asset {
@@ -272,12 +270,6 @@ impl AssetRaw {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Factory {
-    pub address: HumanAddr,
-    pub code_hash: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum AssetInfoRaw {
     Token {
         contract_addr: CanonicalAddr,
@@ -336,67 +328,5 @@ impl AssetInfoRaw {
                 }
             }
         }
-    }
-}
-
-// We define a custom struct for each query response
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct PairInfo {
-    pub asset_infos: [AssetInfo; 2],
-    pub contract_addr: HumanAddr,
-    pub liquidity_token: HumanAddr,
-    pub token_code_hash: String,
-    pub asset0_volume: Uint128,
-    pub asset1_volume: Uint128,
-    pub factory: Factory,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct PairInfoRaw {
-    pub asset_infos: [AssetInfoRaw; 2],
-    pub contract_addr: CanonicalAddr,
-    pub liquidity_token: CanonicalAddr,
-    pub token_code_hash: String,
-    pub asset0_volume: Uint128,
-    pub asset1_volume: Uint128,
-    pub factory: Factory,
-}
-
-impl PairInfoRaw {
-    pub fn to_normal<S: Storage, A: Api, Q: Querier>(
-        &self,
-        deps: &Extern<S, A, Q>,
-    ) -> StdResult<PairInfo> {
-        Ok(PairInfo {
-            liquidity_token: deps.api.human_address(&self.liquidity_token)?,
-            contract_addr: deps.api.human_address(&self.contract_addr)?,
-            asset_infos: [
-                self.asset_infos[0].to_normal(&deps)?,
-                self.asset_infos[1].to_normal(&deps)?,
-            ],
-            token_code_hash: self.token_code_hash.clone(),
-            asset0_volume: self.asset0_volume.clone(),
-            asset1_volume: self.asset1_volume.clone(),
-            factory: self.factory.clone(),
-        })
-    }
-
-    pub fn query_pools<S: Storage, A: Api, Q: Querier>(
-        self: &Self,
-        deps: &Extern<S, A, Q>,
-        contract_addr: &HumanAddr,
-    ) -> StdResult<[Asset; 2]> {
-        let info_0: AssetInfo = self.asset_infos[0].to_normal(deps)?;
-        let info_1: AssetInfo = self.asset_infos[1].to_normal(deps)?;
-        Ok([
-            Asset {
-                amount: info_0.query_pool(deps, contract_addr)?,
-                info: info_0,
-            },
-            Asset {
-                amount: info_1.query_pool(deps, contract_addr)?,
-                info: info_1,
-            },
-        ])
     }
 }
