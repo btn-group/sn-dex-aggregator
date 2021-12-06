@@ -7,8 +7,8 @@ use crate::{
     },
 };
 use cosmwasm_std::{
-    from_binary, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse,
-    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
+    from_binary, to_binary, Api, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
+    InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
 
@@ -51,35 +51,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 
             Ok(HandleResponse {
                 messages: output_msgs,
-                log: vec![],
-                data: None,
-            })
-        }
-        HandleMsg::RecoverFunds {
-            token,
-            amount,
-            to,
-            snip20_send_msg,
-        } => {
-            let send_msg = match token {
-                Token::Snip20(Snip20Data { address, code_hash }) => vec![snip20::send_msg(
-                    to,
-                    amount,
-                    snip20_send_msg,
-                    None,
-                    256,
-                    code_hash,
-                    address,
-                )?],
-                Token::Scrt => vec![CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address,
-                    to_address: to,
-                    amount: vec![Coin::new(amount.u128(), "uscrt")],
-                })],
-            };
-
-            Ok(HandleResponse {
-                messages: send_msg,
                 log: vec![],
                 data: None,
             })
