@@ -1,20 +1,8 @@
+use crate::msg::{Hop, Route};
 use cosmwasm_std::{HumanAddr, StdResult, Storage};
 use cosmwasm_storage::{ReadonlySingleton, Singleton};
-
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::msg::{Hop, Route};
-
-static KEY_OWNER: &[u8] = b"owner";
-
-pub fn store_owner<S: Storage>(storage: &mut S, data: &HumanAddr) -> StdResult<()> {
-    Singleton::new(storage, KEY_OWNER).save(data)
-}
-
-pub fn read_owner<S: Storage>(storage: &S) -> StdResult<HumanAddr> {
-    ReadonlySingleton::new(storage, KEY_OWNER).load()
-}
 
 static KEY_CASHBACK: &[u8] = b"cashback";
 

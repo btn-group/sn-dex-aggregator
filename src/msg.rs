@@ -60,7 +60,6 @@ pub struct ReverseSimulationResponse {
 pub struct InitMsg {
     pub register_tokens: Option<Vec<Snip20Data>>,
     pub cashback: Option<SecretContract>,
-    pub owner: Option<HumanAddr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -107,10 +106,6 @@ pub enum HandleMsg {
         amount: Uint128,
         to: HumanAddr,
         snip20_send_msg: Option<Binary>,
-    },
-    UpdateSettings {
-        new_owner: Option<HumanAddr>,
-        new_cashback: Option<SecretContract>,
     },
 }
 
