@@ -4,8 +4,6 @@ use cosmwasm_std::{
 };
 use secret_toolkit::snip20::balance_query;
 
-const BLOCK_SIZE: usize = 256;
-
 pub fn query_balance<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     account_addr: &HumanAddr,
@@ -30,7 +28,7 @@ pub fn query_token_balance<S: Storage, A: Api, Q: Querier>(
         &deps.querier,
         account_addr.clone(),
         viewing_key.clone(),
-        BLOCK_SIZE,
+        1,
         contract_hash.clone(),
         contract_addr.clone(),
     )?;

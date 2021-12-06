@@ -1,4 +1,3 @@
-use crate::asset::Asset;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,8 +11,9 @@ pub struct InitMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Hop {
     pub from_token: Token,
-    pub pair_address: HumanAddr,
-    pub pair_code_hash: String,
+    pub contract_address: HumanAddr,
+    pub contract_code_hash: String,
+    pub interaction_type: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -31,6 +31,18 @@ pub struct Snip20Data {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub enum Snip20Swap {
+    Deposit {
+        padding: Option<String>,
+    },
+    Swap {
+        expected_return: Option<Uint128>,
+        to: Option<HumanAddr>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum Token {
     Snip20(Snip20Data),
     Native,
@@ -39,9 +51,6 @@ pub enum Token {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    Deposit {
-        padding: Option<String>,
-    },
     Receive {
         from: HumanAddr,
         msg: Option<Binary>,

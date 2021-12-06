@@ -1,13 +1,12 @@
 use crate::{
-    asset::{Asset, AssetInfo},
-    msg::{HandleMsg, Hop, InitMsg, NativeSwap, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
+    msg::{HandleMsg, Hop, InitMsg, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
     state::{
         delete_route_state, read_route_state, read_tokens, store_route_state, store_tokens,
         RouteState,
     },
 };
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
+    from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
     InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
@@ -128,7 +127,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         Token::Snip20(Snip20Data { address, code_hash }) => {
             // first hop is a snip20
             msgs.push(snip20::send_msg(
-                first_hop.pair_address,
+                first_hop.contract_address,
                 amount,
                 // build swap msg for the next hop
                 Some(to_binary(&Snip20Swap::Swap {
@@ -144,24 +143,24 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             )?);
         }
         Token::Native => {
-            msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: first_hop.pair_address,
-                callback_code_hash: first_hop.pair_code_hash,
-                msg: to_binary(&HandleMsg::Deposit { padding: None })?,
-                send: vec![Coin::new(amount.u128(), &env.message.sent_funds[0].denom)],
-            }));
+            msgs.push(snip20::deposit_msg(
+                amount,
+                None,
+                1,
+                first_hop.contract_code_hash.clone(),
+                first_hop.contract_address.clone(),
+            )?);
             msgs.push(snip20::send_msg(
-                env.contract.address,
+                env.contract.address.clone(),
                 amount,
                 None,
                 None,
-                256,
-                first_hop.pair_code_hash,
-                first_hop.pair_address,
+                1,
+                first_hop.contract_code_hash,
+                first_hop.contract_address,
             )?);
         }
     }
-
     msgs.push(
         // finalize the route at the end, to make sure the route was completed successfully
         CosmosMsg::Wasm(WasmMsg::Execute {
@@ -220,12 +219,14 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
             // Need to fix this so that if the previous hop involved a native token
             // being swapped, the from should be the contract
+            // I don't really see why this is a big deal or why it needs to be checked, as long as the last user gets their
             let from_pair_of_current_hop = match current_hop {
                 Some(Hop {
                     from_token: _,
-                    pair_code_hash: _,
-                    ref pair_address,
-                }) => *pair_address == from,
+                    contract_code_hash: _,
+                    ref contract_address,
+                    interaction_type: _,
+                }) => *contract_address == from,
                 None => false,
             };
 
@@ -245,24 +246,37 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 3. set the recipient of the final swap to be the user
                 is_done = true;
                 current_hop = None;
-                msgs.push(snip20::send_msg(
-                    next_hop.clone().pair_address,
-                    amount,
-                    Some(to_binary(&Snip20Swap::Swap {
-                        expected_return,
-                        to: Some(to.clone()),
-                    })?),
-                    None,
-                    256,
-                    from_token_code_hash,
-                    from_token_address,
-                )?);
+                let interaction_msg = if next_hop.clone().interaction_type == "swap" {
+                    snip20::send_msg(
+                        next_hop.clone().contract_address,
+                        amount,
+                        Some(to_binary(&Snip20Swap::Swap {
+                            expected_return,
+                            to: Some(to.clone()),
+                        })?),
+                        None,
+                        256,
+                        from_token_code_hash,
+                        from_token_address,
+                    )
+                } else {
+                    // Need to check that the expected return is corret here
+                    snip20::redeem_msg(
+                        amount,
+                        None,
+                        None,
+                        1,
+                        from_token_code_hash,
+                        from_token_address,
+                    )
+                };
+                msgs.push(interaction_msg?);
             } else {
                 // not last hop
                 // 1. set expected_return to None because we don't care about slippage mid-route
                 // 2. set the recipient of the swap to be this contract (the router)
                 msgs.push(snip20::send_msg(
-                    next_hop.clone().pair_address,
+                    next_hop.clone().contract_address,
                     amount,
                     Some(to_binary(&Snip20Swap::Swap {
                         expected_return: None,

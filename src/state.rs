@@ -4,12 +4,6 @@ use cosmwasm_storage::{ReadonlySingleton, Singleton};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct SecretContract {
-    pub address: HumanAddr,
-    pub code_hash: String,
-}
-
 static KEY_ROUTE_STATE: &[u8] = b"route_state";
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
