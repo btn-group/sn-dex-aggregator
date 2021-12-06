@@ -1,5 +1,4 @@
 use crate::asset::{Asset, AssetInfo};
-use crate::state::SecretContract;
 use cosmwasm_std::Decimal;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
@@ -99,12 +98,6 @@ pub enum HandleMsg {
     FinalizeRoute {},
     RegisterTokens {
         tokens: Vec<Snip20Data>,
-    },
-    RecoverFunds {
-        token: Token,
-        amount: Uint128,
-        to: HumanAddr,
-        snip20_send_msg: Option<Binary>,
     },
 }
 
