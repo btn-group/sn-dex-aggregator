@@ -12,9 +12,7 @@
           "type": "object",
           "required": [
             "amount",
-            "from",
-            "msg",
-            "sender"
+            "from"
           ],
           "properties": {
             "amount": {
@@ -24,34 +22,13 @@
               "$ref": "#/definitions/HumanAddr"
             },
             "msg": {
-              "$ref": "#/definitions/Binary"
-            },
-            "sender": {
-              "$ref": "#/definitions/HumanAddr"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
-        "set_viewing_key"
-      ],
-      "properties": {
-        "set_viewing_key": {
-          "type": "object",
-          "required": [
-            "key"
-          ],
-          "properties": {
-            "key": {
-              "type": "string"
-            },
-            "padding": {
-              "type": [
-                "string",
-                "null"
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
               ]
             }
           }
@@ -61,60 +38,31 @@
     {
       "type": "object",
       "required": [
-        "show"
+        "finalize_route"
       ],
       "properties": {
-        "show": {
-          "type": "object",
-          "required": [
-            "position"
-          ],
-          "properties": {
-            "position": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          }
+        "finalize_route": {
+          "type": "object"
         }
       }
     },
     {
       "type": "object",
       "required": [
-        "update_authentication"
+        "register_tokens"
       ],
       "properties": {
-        "update_authentication": {
+        "register_tokens": {
           "type": "object",
           "required": [
-            "id",
-            "label",
-            "notes",
-            "password",
-            "position",
-            "username"
+            "tokens"
           ],
           "properties": {
-            "id": {
-              "type": "string"
-            },
-            "label": {
-              "type": "string"
-            },
-            "notes": {
-              "type": "string"
-            },
-            "password": {
-              "type": "string"
-            },
-            "position": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            },
-            "username": {
-              "type": "string"
+            "tokens": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Snip20Data"
+              }
             }
           }
         }
@@ -128,6 +76,21 @@
     },
     "HumanAddr": {
       "type": "string"
+    },
+    "Snip20Data": {
+      "type": "object",
+      "required": [
+        "address",
+        "code_hash"
+      ],
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/HumanAddr"
+        },
+        "code_hash": {
+          "type": "string"
+        }
+      }
     },
     "Uint128": {
       "type": "string"
