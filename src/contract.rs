@@ -6,8 +6,8 @@ use crate::{
     },
 };
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
-    InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
+    from_binary, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse,
+    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
 
@@ -246,8 +246,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 3. set the recipient of the final swap to be the user
                 is_done = true;
                 current_hop = None;
-                let interaction_msg = if next_hop.clone().interaction_type == "swap" {
-                    snip20::send_msg(
+                if next_hop.clone().interaction_type == "swap" {
+                    msgs.push(snip20::send_msg(
                         next_hop.clone().contract_address,
                         amount,
                         Some(to_binary(&Snip20Swap::Swap {
@@ -258,19 +258,41 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         256,
                         from_token_code_hash,
                         from_token_address,
-                    )
+                    )?)
                 } else {
-                    // Need to check that the expected return is corret here
-                    snip20::redeem_msg(
+                    if let Some(expected_return) = expected_return {
+                        if amount.lt(&expected_return) {
+                            return Err(StdError::generic_err(
+                                "Operation fell short of expected_return",
+                            ));
+                        }
+                    }
+
+                    let exchange_rate = snip20::exchange_rate_query(
+                        &deps.querier,
+                        1,
+                        from_token_code_hash.clone(),
+                        from_token_address.clone(),
+                    )?;
+                    let denom = exchange_rate.denom;
+                    msgs.push(snip20::redeem_msg(
                         amount,
-                        None,
+                        Some(denom.clone()),
                         None,
                         1,
                         from_token_code_hash,
                         from_token_address,
-                    )
+                    )?);
+                    let withdrawal_coins: Vec<Coin> = vec![Coin {
+                        denom: denom,
+                        amount,
+                    }];
+                    msgs.push(CosmosMsg::Bank(BankMsg::Send {
+                        from_address: env.contract.address.clone(),
+                        to_address: to.clone(),
+                        amount: withdrawal_coins,
+                    }))
                 };
-                msgs.push(interaction_msg?);
             } else {
                 // not last hop
                 // 1. set expected_return to None because we don't care about slippage mid-route
