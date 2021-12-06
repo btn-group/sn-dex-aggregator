@@ -33,12 +33,15 @@ pub struct Snip20Data {
 #[serde(rename_all = "snake_case")]
 pub enum Token {
     Snip20(Snip20Data),
-    Scrt,
+    Native,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
+    Deposit {
+        padding: Option<String>,
+    },
     Receive {
         from: HumanAddr,
         msg: Option<Binary>,
@@ -54,23 +57,4 @@ pub enum HandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     SupportedTokens {},
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Snip20Swap {
-    Swap {
-        expected_return: Option<Uint128>,
-        to: Option<HumanAddr>,
-    },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum NativeSwap {
-    Swap {
-        offer_asset: Asset,
-        expected_return: Option<Uint128>,
-        to: Option<HumanAddr>,
-    },
 }

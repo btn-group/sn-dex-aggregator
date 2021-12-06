@@ -84,9 +84,9 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     // (we don't need to check if it's the output token because it's handled in the swap_pair contract)
     for i in 1..(hops.len() - 1) {
         match hops[i].from_token {
-            Token::Scrt => {
+            Token::Native => {
                 return Err(StdError::generic_err(
-                    "cannot route via uscrt. uscrt can only be route input token or output token.",
+                    "Native tokens can only be the input or output tokens.",
                 ))
             }
             _ => continue,
@@ -100,17 +100,13 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             ref address,
             code_hash: _,
         }) => env.message.sender == *address,
-        Token::Scrt => {
-            env.message.sent_funds.len() == 1
-                && env.message.sent_funds[0].amount == amount
-                && env.message.sent_funds[0].denom == "uscrt"
+        Token::Native => {
+            env.message.sent_funds.len() == 1 && env.message.sent_funds[0].amount == amount
         }
     };
 
     if !received_first_hop {
-        return Err(StdError::generic_err(
-            "route can only be initiated by sending here the token of the first hop",
-        ));
+        return Err(StdError::generic_err("Wrong crypto received."));
     }
 
     store_route_state(
@@ -147,28 +143,22 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 address,
             )?);
         }
-        Token::Scrt => {
-            // first hop is SCRT
-            msgs.push(
-                // build swap msg for the next hop
-                CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: first_hop.pair_address,
-                    callback_code_hash: first_hop.pair_code_hash,
-                    msg: to_binary(&NativeSwap::Swap {
-                        offer_asset: Asset {
-                            amount,
-                            info: AssetInfo::NativeToken {
-                                denom: "uscrt".into(),
-                            },
-                        },
-                        // set expected_return to None because we don't care about slippage mid-route
-                        expected_return: None,
-                        // set the recepient of the swap to be this contract (the router)
-                        to: Some(env.contract.address.clone()),
-                    })?,
-                    send: vec![Coin::new(amount.u128(), "uscrt")],
-                }),
-            );
+        Token::Native => {
+            msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: first_hop.pair_address,
+                callback_code_hash: first_hop.pair_code_hash,
+                msg: to_binary(&HandleMsg::Deposit { padding: None })?,
+                send: vec![Coin::new(amount.u128(), &env.message.sent_funds[0].denom)],
+            }));
+            msgs.push(snip20::send_msg(
+                env.contract.address,
+                amount,
+                None,
+                None,
+                256,
+                first_hop.pair_code_hash,
+                first_hop.pair_address,
+            )?);
         }
     }
 
@@ -221,13 +211,15 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
             let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
                 Token::Snip20(Snip20Data { address, code_hash }) => (address, code_hash),
-                Token::Scrt => {
+                Token::Native => {
                     return Err(StdError::generic_err(
-                        "weird. cannot route via uscrt. uscrt can only be route input token or output token.",
-                        ));
+                        "Native tokens can only be the input or output tokens.",
+                    ));
                 }
             };
 
+            // Need to fix this so that if the previous hop involved a native token
+            // being swapped, the from should be the contract
             let from_pair_of_current_hop = match current_hop {
                 Some(Hop {
                     from_token: _,
