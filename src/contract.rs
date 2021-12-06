@@ -2,8 +2,8 @@ use crate::{
     asset::{Asset, AssetInfo},
     msg::{HandleMsg, Hop, InitMsg, NativeSwap, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
     state::{
-        delete_route_state, read_cashback, read_route_state, read_tokens, store_cashback,
-        store_route_state, store_tokens, RouteState,
+        delete_route_state, read_route_state, read_tokens, store_route_state, store_tokens,
+        RouteState,
     },
 };
 use cosmwasm_std::{
@@ -21,17 +21,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     store_tokens(&mut deps.storage, &vec![])?;
     if let Some(tokens) = msg.register_tokens {
         output_msgs.extend(register_tokens(deps, &env, tokens)?);
-    }
-    if let Some(cashback) = msg.cashback {
-        store_cashback(&mut deps.storage, &cashback)?;
-        output_msgs.extend(register_tokens(
-            deps,
-            &env,
-            vec![Snip20Data {
-                address: cashback.address,
-                code_hash: cashback.code_hash,
-            }],
-        )?);
     }
 
     Ok(InitResponse {
@@ -245,7 +234,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     // 3'. send `amount` Z to pair Z/W with recepient `to`
     match read_route_state(&deps.storage)? {
         Some(RouteState {
-            is_done,
+            is_done: _,
             current_hop,
             remaining_route:
                 Route {
@@ -383,39 +372,7 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
             }
 
             delete_route_state(&mut deps.storage);
-
-            if let Some(cashback) = read_cashback(&deps.storage)? {
-                let balance = snip20::balance_query(
-                    &deps.querier,
-                    env.contract.address.clone(),
-                    "SecretSwap Router".into(),
-                    256,
-                    cashback.code_hash.clone(),
-                    cashback.address.clone(),
-                )?;
-
-                let mut messages = vec![];
-                if balance.amount.u128() > 0 {
-                    let msg = snip20::send_msg(
-                        remaining_route.to,
-                        balance.amount,
-                        None,
-                        None,
-                        256,
-                        cashback.code_hash,
-                        cashback.address,
-                    )?;
-                    messages.push(msg);
-                }
-
-                Ok(HandleResponse {
-                    messages,
-                    log: vec![],
-                    data: None,
-                })
-            } else {
-                Ok(HandleResponse::default())
-            }
+            Ok(HandleResponse::default())
         }
         None => Err(StdError::generic_err("no route to finalize")),
     }

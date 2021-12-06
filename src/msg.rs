@@ -59,7 +59,6 @@ pub struct ReverseSimulationResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
     pub register_tokens: Option<Vec<Snip20Data>>,
-    pub cashback: Option<SecretContract>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
