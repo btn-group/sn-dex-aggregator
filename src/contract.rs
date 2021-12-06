@@ -374,7 +374,7 @@ fn register_tokens<S: Storage, A: Api, Q: Querier>(
             address.clone(),
         )?);
         output_msgs.push(snip20::set_viewing_key_msg(
-            "SecretSwap Router".into(),
+            "DoTheRightThing.".into(),
             None,
             256,
             code_hash.clone(),
