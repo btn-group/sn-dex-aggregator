@@ -438,3 +438,54 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::SecretContract;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
+
+    // === HELPERS ===
+    fn init_helper() -> (
+        StdResult<InitResponse>,
+        Extern<MockStorage, MockApi, MockQuerier>,
+    ) {
+        let env = mock_env(mock_user_address(), &[]);
+        let mut deps = mock_dependencies(20, &[]);
+        let msg = InitMsg {
+            buttcoin: mock_buttcoin(),
+            butt_lode: mock_butt_lode(),
+            register_tokens: None,
+        };
+        (init(&mut deps, env.clone(), msg), deps)
+    }
+
+    fn mock_buttcoin() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("token-address"),
+            contract_hash: "token-contract-hash".to_string(),
+        }
+    }
+
+    fn mock_butt_lode() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("token-address"),
+            contract_hash: "token-contract-hash".to_string(),
+        }
+    }
+
+    fn mock_user_address() -> HumanAddr {
+        HumanAddr::from("gary")
+    }
+
+    // === QUERY TESTS ===
+
+    #[test]
+    fn test_query_config() {
+        let (_init_result, deps) = init_helper();
+        let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
+        let query_result = query(&deps, QueryMsg::Config {}).unwrap();
+        let query_answer_config: Config = from_binary(&query_result).unwrap();
+        assert_eq!(query_answer_config, config);
+    }
+}
