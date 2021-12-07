@@ -23,6 +23,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let config: Config = Config {
         buttcoin: msg.buttcoin,
         butt_lode: msg.butt_lode,
+        initiator: env.message.sender.clone(),
         registered_tokens: vec![],
     };
     config_store.store(CONFIG_KEY, &config)?;
@@ -442,7 +443,6 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::SecretContract;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
 
     // === HELPERS ===
