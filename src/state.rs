@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 pub struct Config {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,
+    pub initiator: HumanAddr,
     pub registered_tokens: Vec<HumanAddr>,
 }
 
@@ -36,7 +37,8 @@ pub struct Hop {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Route {
     pub hops: VecDeque<Hop>,
-    pub expected_return: Option<Uint128>,
+    pub estimated_amount: Uint128,
+    pub minimum_acceptable_amount: Uint128,
     pub to: HumanAddr,
 }
 
