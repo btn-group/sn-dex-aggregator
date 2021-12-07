@@ -2,14 +2,24 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "InitMsg",
   "type": "object",
+  "required": [
+    "butt_lode",
+    "buttcoin"
+  ],
   "properties": {
+    "butt_lode": {
+      "$ref": "#/definitions/SecretContract"
+    },
+    "buttcoin": {
+      "$ref": "#/definitions/SecretContract"
+    },
     "register_tokens": {
       "type": [
         "array",
         "null"
       ],
       "items": {
-        "$ref": "#/definitions/Snip20Data"
+        "$ref": "#/definitions/SecretContract"
       }
     }
   },
@@ -17,17 +27,17 @@
     "HumanAddr": {
       "type": "string"
     },
-    "Snip20Data": {
+    "SecretContract": {
       "type": "object",
       "required": [
         "address",
-        "code_hash"
+        "contract_hash"
       ],
       "properties": {
         "address": {
           "$ref": "#/definitions/HumanAddr"
         },
-        "code_hash": {
+        "contract_hash": {
           "type": "string"
         }
       }
