@@ -1,51 +1,13 @@
+use crate::state::SecretContract;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
-    pub register_tokens: Option<Vec<Snip20Data>>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Hop {
-    pub from_token: Token,
-    pub contract_address: HumanAddr,
-    pub contract_code_hash: String,
-    pub interaction_type: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Route {
-    pub hops: VecDeque<Hop>,
-    pub expected_return: Option<Uint128>,
-    pub to: HumanAddr,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Snip20Data {
-    pub address: HumanAddr,
-    pub code_hash: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Snip20Swap {
-    Deposit {
-        padding: Option<String>,
-    },
-    Swap {
-        expected_return: Option<Uint128>,
-        to: Option<HumanAddr>,
-    },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Token {
-    Snip20(Snip20Data),
-    Native,
+    pub buttcoin: SecretContract,
+    pub butt_lode: SecretContract,
+    pub register_tokens: Option<Vec<SecretContract>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -58,12 +20,24 @@ pub enum HandleMsg {
     },
     FinalizeRoute {},
     RegisterTokens {
-        tokens: Vec<Snip20Data>,
+        tokens: Vec<SecretContract>,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    SupportedTokens {},
+    Config {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Snip20Swap {
+    Deposit {
+        padding: Option<String>,
+    },
+    Swap {
+        expected_return: Option<Uint128>,
+        to: Option<HumanAddr>,
+    },
 }

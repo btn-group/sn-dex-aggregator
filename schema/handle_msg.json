@@ -61,7 +61,7 @@
             "tokens": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/Snip20Data"
+                "$ref": "#/definitions/SecretContract"
               }
             }
           }
@@ -77,17 +77,17 @@
     "HumanAddr": {
       "type": "string"
     },
-    "Snip20Data": {
+    "SecretContract": {
       "type": "object",
       "required": [
         "address",
-        "code_hash"
+        "contract_hash"
       ],
       "properties": {
         "address": {
           "$ref": "#/definitions/HumanAddr"
         },
-        "code_hash": {
+        "contract_hash": {
           "type": "string"
         }
       }

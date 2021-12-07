@@ -1,8 +1,9 @@
+use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
-    msg::{HandleMsg, Hop, InitMsg, QueryMsg, Route, Snip20Data, Snip20Swap, Token},
+    msg::{HandleMsg, InitMsg, QueryMsg, Snip20Swap},
     state::{
-        delete_route_state, read_route_state, read_tokens, store_route_state, store_tokens,
-        RouteState,
+        delete_route_state, read_route_state, store_route_state, Config, Hop, Route, RouteState,
+        SecretContract, Token,
     },
 };
 use cosmwasm_std::{
@@ -10,6 +11,7 @@ use cosmwasm_std::{
     HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
+use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -17,7 +19,13 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let mut output_msgs: Vec<CosmosMsg> = vec![];
-    store_tokens(&mut deps.storage, &vec![])?;
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let config: Config = Config {
+        buttcoin: msg.buttcoin,
+        butt_lode: msg.butt_lode,
+        registered_tokens: vec![],
+    };
+    config_store.store(CONFIG_KEY, &config)?;
     if let Some(tokens) = msg.register_tokens {
         output_msgs.extend(register_tokens(deps, &env, tokens)?);
     }
@@ -78,9 +86,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err("route must be at least 2 hops"));
     }
 
-    // uscrt can only be the input or output token
-    // check that uscrt is not the input token for any hop that is not the first hop
-    // (we don't need to check if it's the output token because it's handled in the swap_pair contract)
+    // Only the first from token can be a native token
     for i in 1..(hops.len() - 1) {
         match hops[i].from_token {
             Token::Native => {
@@ -92,12 +98,12 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         }
     }
 
-    let first_hop: Hop = hops.pop_front().unwrap(); // unwrap is cool because `hops.len() >= 2`
-
+    // unwrap is cool because `hops.len() >= 2`
+    let first_hop: Hop = hops.pop_front().unwrap();
     let received_first_hop: bool = match first_hop.from_token {
-        Token::Snip20(Snip20Data {
+        Token::Snip20(SecretContract {
             ref address,
-            code_hash: _,
+            contract_hash: _,
         }) => env.message.sender == *address,
         Token::Native => {
             env.message.sent_funds.len() == 1 && env.message.sent_funds[0].amount == amount
@@ -124,7 +130,10 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     let mut msgs = vec![];
 
     match first_hop.from_token {
-        Token::Snip20(Snip20Data { address, code_hash }) => {
+        Token::Snip20(SecretContract {
+            address,
+            contract_hash,
+        }) => {
             // first hop is a snip20
             msgs.push(snip20::send_msg(
                 first_hop.contract_address,
@@ -137,8 +146,8 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                     to: Some(env.contract.address.clone()),
                 })?),
                 None,
-                256,
-                code_hash,
+                BLOCK_SIZE,
+                contract_hash,
                 address,
             )?);
         }
@@ -146,7 +155,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             msgs.push(snip20::deposit_msg(
                 amount,
                 None,
-                1,
+                BLOCK_SIZE,
                 first_hop.contract_code_hash.clone(),
                 first_hop.contract_address.clone(),
             )?);
@@ -155,7 +164,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 amount,
                 None,
                 None,
-                1,
+                BLOCK_SIZE,
                 first_hop.contract_code_hash,
                 first_hop.contract_address,
             )?);
@@ -209,7 +218,10 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             };
 
             let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
-                Token::Snip20(Snip20Data { address, code_hash }) => (address, code_hash),
+                Token::Snip20(SecretContract {
+                    address,
+                    contract_hash,
+                }) => (address, contract_hash),
                 Token::Native => {
                     return Err(StdError::generic_err(
                         "Native tokens can only be the input or output tokens.",
@@ -255,7 +267,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             to: Some(to.clone()),
                         })?),
                         None,
-                        256,
+                        BLOCK_SIZE,
                         from_token_code_hash,
                         from_token_address,
                     )?)
@@ -270,7 +282,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
                     let exchange_rate = snip20::exchange_rate_query(
                         &deps.querier,
-                        1,
+                        BLOCK_SIZE,
                         from_token_code_hash.clone(),
                         from_token_address.clone(),
                     )?;
@@ -279,7 +291,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         amount,
                         Some(denom.clone()),
                         None,
-                        1,
+                        BLOCK_SIZE,
                         from_token_code_hash,
                         from_token_address,
                     )?);
@@ -305,7 +317,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         to: Some(env.contract.address.clone()),
                     })?),
                     None,
-                    256,
+                    BLOCK_SIZE,
                     from_token_code_hash,
                     from_token_address,
                 )?);
@@ -380,38 +392,37 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
 fn register_tokens<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
-    tokens: Vec<Snip20Data>,
+    tokens: Vec<SecretContract>,
 ) -> StdResult<Vec<CosmosMsg>> {
-    let mut registered_tokens = read_tokens(&deps.storage)?;
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
     let mut output_msgs = vec![];
 
     for token in tokens {
         let address = token.address;
-        let code_hash = token.code_hash;
+        let contract_hash = token.contract_hash;
 
-        if registered_tokens.contains(&address) {
+        if config.registered_tokens.contains(&address) {
             continue;
         }
-        registered_tokens.push(address.clone());
+        config.registered_tokens.push(address.clone());
 
         output_msgs.push(snip20::register_receive_msg(
             env.contract_code_hash.clone(),
             None,
-            256,
-            code_hash.clone(),
+            BLOCK_SIZE,
+            contract_hash.clone(),
             address.clone(),
         )?);
         output_msgs.push(snip20::set_viewing_key_msg(
             "DoTheRightThing.".into(),
             None,
-            256,
-            code_hash.clone(),
+            BLOCK_SIZE,
+            contract_hash.clone(),
             address.clone(),
         )?);
     }
-
-    store_tokens(&mut deps.storage, &registered_tokens)?;
-
+    config_store.store(CONFIG_KEY, &config)?;
     return Ok(output_msgs);
 }
 
@@ -420,9 +431,10 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::SupportedTokens {} => {
-            let tokens = read_tokens(&deps.storage)?;
-            Ok(to_binary(&tokens)?)
+        QueryMsg::Config {} => {
+            let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+            Ok(to_binary(&config)?)
         }
     }
 }
