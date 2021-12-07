@@ -1,8 +1,8 @@
 # Secret network DEX aggregator V1
 
 ## How it works
-* User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems), the minimum allowable amount and the expected amount.
-* If the swaps don't end with the minimal allowable ammount, the whole transaction is cancelled.
+* User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems), the minimum acceptable amount and the estimated amount.
+* If the swaps don't end with the minimal acceptable ammount, the whole transaction is cancelled.
 
 ### Fees
 * Other protocols take the positive slippage and send it to an address.

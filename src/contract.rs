@@ -80,7 +80,8 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     let Route {
         mut hops,
         to,
-        expected_return,
+        estimated_amount,
+        minimum_acceptable_amount,
     } = from_binary(&msg)?;
 
     if hops.len() < 2 {
@@ -122,7 +123,8 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             current_hop: Some(first_hop.clone()),
             remaining_route: Route {
                 hops, // hops was mutated earlier when we did `hops.pop_front()`
-                expected_return,
+                estimated_amount,
+                minimum_acceptable_amount,
                 to,
             },
         },
@@ -192,7 +194,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
     from: HumanAddr,
-    amount: Uint128,
+    mut amount: Uint128,
 ) -> StdResult<HandleResponse> {
     // This is a receive msg somewhere along the route
     // 1. load route from state (Y/Z -> Z/W)
@@ -209,7 +211,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             remaining_route:
                 Route {
                     mut hops,
-                    expected_return,
+                    estimated_amount,
+                    minimum_acceptable_amount,
                     to,
                 },
         }) => {
@@ -259,28 +262,31 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 3. set the recipient of the final swap to be the user
                 is_done = true;
                 current_hop = None;
-                if next_hop.clone().interaction_type == "swap" {
-                    msgs.push(snip20::send_msg(
-                        next_hop.clone().contract_address,
-                        amount,
-                        Some(to_binary(&Snip20Swap::Swap {
-                            expected_return,
-                            to: Some(to.clone()),
-                        })?),
+                if amount.lt(&minimum_acceptable_amount) {
+                    return Err(StdError::generic_err(
+                        "Operation fell short of minimum_acceptable_amount",
+                    ));
+                }
+                // Send fee to appropriate person
+                let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+                if amount > estimated_amount {
+                    let fee_recipient = if from_token_address == config.buttcoin.address {
+                        config.butt_lode.address
+                    } else {
+                        config.initiator
+                    };
+                    msgs.push(snip20::transfer_msg(
+                        fee_recipient,
+                        (amount - estimated_amount).unwrap(),
                         None,
                         BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
-                    )?)
-                } else {
-                    if let Some(expected_return) = expected_return {
-                        if amount.lt(&expected_return) {
-                            return Err(StdError::generic_err(
-                                "Operation fell short of expected_return",
-                            ));
-                        }
-                    }
+                        from_token_code_hash.clone(),
+                        from_token_address.clone(),
+                    )?);
+                    amount = estimated_amount
+                }
 
+                if next_hop.interaction_type == "redeem" {
                     let exchange_rate = snip20::exchange_rate_query(
                         &deps.querier,
                         BLOCK_SIZE,
@@ -305,7 +311,16 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         to_address: to.clone(),
                         amount: withdrawal_coins,
                     }))
-                };
+                } else {
+                    msgs.push(snip20::transfer_msg(
+                        to.clone(),
+                        amount,
+                        None,
+                        BLOCK_SIZE,
+                        from_token_code_hash,
+                        from_token_address,
+                    )?);
+                }
             } else {
                 // not last hop
                 // 1. set expected_return to None because we don't care about slippage mid-route
@@ -331,7 +346,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     current_hop,
                     remaining_route: Route {
                         hops, // hops was mutated earlier when we did `hops.pop_front()`
-                        expected_return,
+                        estimated_amount,
+                        minimum_acceptable_amount,
                         to,
                     },
                 },
