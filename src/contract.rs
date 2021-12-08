@@ -23,7 +23,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         buttcoin: msg.buttcoin,
         butt_lode: msg.butt_lode,
         initiator: env.message.sender.clone(),
-        registered_tokens: vec![],
     };
     config_store.store(CONFIG_KEY, &config)?;
 
@@ -50,15 +49,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             amount,
         } => handle_hop(deps, &env, from, amount),
         HandleMsg::FinalizeRoute {} => finalize_route(deps, &env),
-        HandleMsg::RegisterTokens { tokens } => {
-            let output_msgs = register_tokens(deps, &env, tokens)?;
-
-            Ok(HandleResponse {
-                messages: output_msgs,
-                log: vec![],
-                data: None,
-            })
-        }
+        HandleMsg::RegisterTokens { tokens } => register_tokens(&env, tokens),
     }
 }
 
@@ -405,32 +396,20 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
     }
 }
 
-fn register_tokens<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: &Env,
-    tokens: Vec<SecretContract>,
-) -> StdResult<Vec<CosmosMsg>> {
-    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
-    let mut config: Config = config_store.load(CONFIG_KEY)?;
-    let mut output_msgs = vec![];
+fn register_tokens(env: &Env, tokens: Vec<SecretContract>) -> StdResult<HandleResponse> {
+    let mut messages = vec![];
 
     for token in tokens {
         let address = token.address;
         let contract_hash = token.contract_hash;
-
-        if config.registered_tokens.contains(&address) {
-            continue;
-        }
-        config.registered_tokens.push(address.clone());
-
-        output_msgs.push(snip20::register_receive_msg(
+        messages.push(snip20::register_receive_msg(
             env.contract_code_hash.clone(),
             None,
             BLOCK_SIZE,
             contract_hash.clone(),
             address.clone(),
         )?);
-        output_msgs.push(snip20::set_viewing_key_msg(
+        messages.push(snip20::set_viewing_key_msg(
             "DoTheRightThing.".into(),
             None,
             BLOCK_SIZE,
@@ -438,8 +417,12 @@ fn register_tokens<S: Storage, A: Api, Q: Querier>(
             address.clone(),
         )?);
     }
-    config_store.store(CONFIG_KEY, &config)?;
-    return Ok(output_msgs);
+
+    Ok(HandleResponse {
+        messages,
+        log: vec![],
+        data: None,
+    })
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
@@ -500,5 +483,57 @@ mod tests {
         let query_result = query(&deps, QueryMsg::Config {}).unwrap();
         let query_answer_config: Config = from_binary(&query_result).unwrap();
         assert_eq!(query_answer_config, config);
+    }
+
+    // === HANDLE TESTS ===
+    #[test]
+    fn test_register_tokens() {
+        let (_init_result, mut deps) = init_helper();
+        let env = mock_env(mock_user_address(), &[]);
+
+        // When tokens are in the parameter
+        let handle_msg = HandleMsg::RegisterTokens {
+            tokens: vec![mock_buttcoin(), mock_butt_lode()],
+        };
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result_unwrapped = handle_result.unwrap();
+        // * it sends a message to register receive for the token and sets a viewing key
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![
+                snip20::register_receive_msg(
+                    env.contract_code_hash.clone(),
+                    None,
+                    BLOCK_SIZE,
+                    mock_buttcoin().contract_hash,
+                    mock_buttcoin().address,
+                )
+                .unwrap(),
+                snip20::set_viewing_key_msg(
+                    "DoTheRightThing.".into(),
+                    None,
+                    BLOCK_SIZE,
+                    mock_buttcoin().contract_hash,
+                    mock_buttcoin().address,
+                )
+                .unwrap(),
+                snip20::register_receive_msg(
+                    env.contract_code_hash.clone(),
+                    None,
+                    BLOCK_SIZE,
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
+                )
+                .unwrap(),
+                snip20::set_viewing_key_msg(
+                    "DoTheRightThing.".into(),
+                    None,
+                    BLOCK_SIZE,
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
+                )
+                .unwrap()
+            ]
+        );
     }
 }
