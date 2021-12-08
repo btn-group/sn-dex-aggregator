@@ -82,6 +82,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         to,
         estimated_amount,
         minimum_acceptable_amount,
+        native_out_token,
     } = from_binary(&msg)?;
 
     if hops.len() < 2 {
@@ -125,6 +126,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 hops, // hops was mutated earlier when we did `hops.pop_front()`
                 estimated_amount,
                 minimum_acceptable_amount,
+                native_out_token,
                 to,
             },
         },
@@ -214,6 +216,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     estimated_amount,
                     minimum_acceptable_amount,
                     to,
+                    native_out_token,
                 },
         }) => {
             let next_hop: Hop = match hops.pop_front() {
@@ -241,7 +244,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     from_token: _,
                     contract_code_hash: _,
                     ref contract_address,
-                    interaction_type: _,
                 }) => *contract_address == from,
                 None => false,
             };
@@ -286,7 +288,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     amount = estimated_amount
                 }
 
-                if next_hop.interaction_type == "redeem" {
+                if native_out_token.is_some() && native_out_token.unwrap() {
                     let exchange_rate = snip20::exchange_rate_query(
                         &deps.querier,
                         BLOCK_SIZE,
@@ -349,6 +351,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         estimated_amount,
                         minimum_acceptable_amount,
                         to,
+                        native_out_token,
                     },
                 },
             )?;
