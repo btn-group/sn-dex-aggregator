@@ -12,15 +12,6 @@
     },
     "buttcoin": {
       "$ref": "#/definitions/SecretContract"
-    },
-    "register_tokens": {
-      "type": [
-        "array",
-        "null"
-      ],
-      "items": {
-        "$ref": "#/definitions/SecretContract"
-      }
     }
   },
   "definitions": {
