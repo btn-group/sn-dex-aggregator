@@ -10,7 +10,6 @@ pub struct Config {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,
     pub initiator: HumanAddr,
-    pub registered_tokens: Vec<HumanAddr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
