@@ -18,7 +18,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
-    let mut output_msgs: Vec<CosmosMsg> = vec![];
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
         buttcoin: msg.buttcoin,
@@ -27,12 +26,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         registered_tokens: vec![],
     };
     config_store.store(CONFIG_KEY, &config)?;
-    if let Some(tokens) = msg.register_tokens {
-        output_msgs.extend(register_tokens(deps, &env, tokens)?);
-    }
 
     Ok(InitResponse {
-        messages: output_msgs,
+        messages: vec![],
         log: vec![],
     })
 }
@@ -474,7 +470,6 @@ mod tests {
         let msg = InitMsg {
             buttcoin: mock_buttcoin(),
             butt_lode: mock_butt_lode(),
-            register_tokens: None,
         };
         (init(&mut deps, env.clone(), msg), deps)
     }
@@ -498,7 +493,6 @@ mod tests {
     }
 
     // === QUERY TESTS ===
-
     #[test]
     fn test_query_config() {
         let (_init_result, deps) = init_helper();

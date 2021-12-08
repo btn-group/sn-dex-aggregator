@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct InitMsg {
     pub buttcoin: SecretContract,
     pub butt_lode: SecretContract,
-    pub register_tokens: Option<Vec<SecretContract>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
