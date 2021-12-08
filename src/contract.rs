@@ -73,19 +73,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     } = from_binary(&msg)?;
 
     if hops.len() < 2 {
-        return Err(StdError::generic_err("route must be at least 2 hops"));
-    }
-
-    // Only the first from token can be a native token
-    for i in 1..(hops.len() - 1) {
-        match hops[i].from_token {
-            Token::Native => {
-                return Err(StdError::generic_err(
-                    "Native tokens can only be the input or output tokens.",
-                ))
-            }
-            _ => continue,
-        }
+        return Err(StdError::generic_err("Route must be at least 2 hops."));
     }
 
     // unwrap is cool because `hops.len() >= 2`
@@ -101,7 +89,9 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     };
 
     if !received_first_hop {
-        return Err(StdError::generic_err("Wrong crypto received."));
+        return Err(StdError::generic_err(
+            "Received crypto type or amount is wrong.",
+        ));
     }
 
     store_route_state(
@@ -442,6 +432,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
+    use std::collections::VecDeque;
 
     // === HELPERS ===
     fn init_helper() -> (
@@ -486,6 +477,198 @@ mod tests {
     }
 
     // === HANDLE TESTS ===
+    #[test]
+    fn test_handle_first_hop() {
+        let (_init_result, mut deps) = init_helper();
+        let env = mock_env(
+            mock_user_address(),
+            &[Coin {
+                denom: "uatom".to_string(),
+                amount: Uint128(1_000_000),
+            }],
+        );
+
+        // when there is less than 2 hops
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        hops.push_back(Hop {
+            from_token: Token::Native {},
+            contract_address: mock_buttcoin().address,
+            contract_code_hash: mock_buttcoin().contract_hash,
+        });
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: VecDeque::new(),
+                    to: mock_user_address(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        // * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Route must be at least 2 hops.")
+        );
+
+        // when there is 2 or more hops
+        // = when the from_token for the first hop is a native token
+        // == when the amount specified does match the amount sent in
+        hops.push_back(Hop {
+            from_token: Token::Native {},
+            contract_address: mock_buttcoin().address,
+            contract_code_hash: mock_buttcoin().contract_hash,
+        });
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: hops.clone(),
+                    to: mock_user_address(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(5_000_000),
+        };
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        // == * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Received crypto type or amount is wrong.")
+        );
+        // == when the amount specified matches the amount sent in
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: hops.clone(),
+                    to: mock_user_address(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(1_000_000),
+        };
+        let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg.clone()).unwrap();
+        // == * it stores the route state
+        let route_state: RouteState = read_route_state(&deps.storage).unwrap().unwrap();
+        assert_eq!(route_state.is_done, false);
+        assert_eq!(route_state.current_hop, Some(hops.pop_front().unwrap()));
+        assert_eq!(
+            route_state.remaining_route,
+            Route {
+                hops,
+                estimated_amount: Uint128(1_000_000),
+                minimum_acceptable_amount: Uint128(1_000_000),
+                native_out_token: None,
+                to: mock_user_address(),
+            }
+        );
+        // == * it converts the native token to secret version
+        // == * it sends coverted token to the aggregator to initiate the next hop
+        // == * it finalizes the route
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![
+                snip20::deposit_msg(
+                    Uint128(1_000_000),
+                    None,
+                    BLOCK_SIZE,
+                    mock_buttcoin().contract_hash.clone(),
+                    mock_buttcoin().address.clone(),
+                )
+                .unwrap(),
+                snip20::send_msg(
+                    env.contract.address.clone(),
+                    Uint128(1_000_000),
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    mock_buttcoin().contract_hash,
+                    mock_buttcoin().address,
+                )
+                .unwrap(),
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
+                    send: vec![],
+                }),
+            ]
+        );
+        // = when the from_token for the first hop is a snip20
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        hops.push_back(Hop {
+            from_token: Token::Snip20(mock_butt_lode()),
+            contract_address: mock_buttcoin().address,
+            contract_code_hash: mock_buttcoin().contract_hash,
+        });
+        hops.push_back(Hop {
+            from_token: Token::Snip20(mock_butt_lode()),
+            contract_address: mock_buttcoin().address,
+            contract_code_hash: mock_buttcoin().contract_hash,
+        });
+        // == * it sends the token to pair contract to swap
+        // == * it finalizes route
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: hops.clone(),
+                    to: mock_user_address(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(1_000_000),
+        };
+        let handle_result_unwrapped = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            handle_msg.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![
+                snip20::send_msg(
+                    mock_buttcoin().address,
+                    Uint128(1_000_000),
+                    Some(
+                        to_binary(&Snip20Swap::Swap {
+                            expected_return: None,
+                            to: Some(env.contract.address.clone()),
+                        })
+                        .unwrap()
+                    ),
+                    None,
+                    BLOCK_SIZE,
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
+                )
+                .unwrap(),
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
+                    send: vec![],
+                }),
+            ]
+        );
+    }
+
     #[test]
     fn test_register_tokens() {
         let (_init_result, mut deps) = init_helper();
