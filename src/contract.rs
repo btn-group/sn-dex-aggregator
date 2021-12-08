@@ -1,3 +1,4 @@
+use crate::authorize::authorize;
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, QueryMsg, Snip20Swap},
@@ -39,10 +40,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     match msg {
         HandleMsg::Receive {
-            from: _,
+            from,
             msg: Some(msg),
             amount,
-        } => handle_first_hop(deps, &env, msg, amount),
+        } => handle_first_hop(deps, &env, from, msg, amount),
         HandleMsg::Receive {
             from,
             msg: None,
@@ -56,6 +57,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
+    from: HumanAddr,
     msg: Binary,
     amount: Uint128,
 ) -> StdResult<HandleResponse> {
@@ -83,7 +85,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             ref address,
             contract_hash: _,
         }) => env.message.sender == *address,
-        Token::Native => {
+        Token::Native(_) => {
             env.message.sent_funds.len() == 1 && env.message.sent_funds[0].amount == amount
         }
     };
@@ -104,7 +106,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 estimated_amount,
                 minimum_acceptable_amount,
                 native_out_token,
-                to,
+                to: to.clone(),
             },
         },
     )?;
@@ -116,9 +118,11 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             address,
             contract_hash,
         }) => {
+            authorize(from, to)?;
+
             // first hop is a snip20
             msgs.push(snip20::send_msg(
-                first_hop.contract_address,
+                first_hop.pair_contract_address,
                 amount,
                 // build swap msg for the next hop
                 Some(to_binary(&Snip20Swap::Swap {
@@ -133,22 +137,33 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 address,
             )?);
         }
-        Token::Native => {
+        Token::Native(SecretContract {
+            address,
+            contract_hash,
+        }) => {
+            authorize(env.message.sender.clone(), to)?;
+
             msgs.push(snip20::deposit_msg(
                 amount,
                 None,
                 BLOCK_SIZE,
-                first_hop.contract_code_hash.clone(),
-                first_hop.contract_address.clone(),
+                contract_hash.clone(),
+                address.clone(),
             )?);
             msgs.push(snip20::send_msg(
-                env.contract.address.clone(),
+                first_hop.pair_contract_address,
                 amount,
-                None,
+                // build swap msg for the next hop
+                Some(to_binary(&Snip20Swap::Swap {
+                    // set expected_return to None because we don't care about slippage mid-route
+                    expected_return: None,
+                    // set the recepient of the swap to be this contract (the router)
+                    to: Some(env.contract.address.clone()),
+                })?),
                 None,
                 BLOCK_SIZE,
-                first_hop.contract_code_hash,
-                first_hop.contract_address,
+                contract_hash,
+                address,
             )?);
         }
     }
@@ -198,36 +213,30 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
         }) => {
             let next_hop: Hop = match hops.pop_front() {
                 Some(next_hop) => next_hop,
-                None => return Err(StdError::generic_err("route must be at least 1 hop")),
+                None => return Err(StdError::generic_err("Route must be at least 1 hop.")),
             };
-
             let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
                 Token::Snip20(SecretContract {
                     address,
                     contract_hash,
                 }) => (address, contract_hash),
-                Token::Native => {
+                Token::Native(_) => {
                     return Err(StdError::generic_err(
                         "Native tokens can only be the input or output tokens.",
                     ));
                 }
             };
-
-            // Need to fix this so that if the previous hop involved a native token
-            // being swapped, the from should be the contract
-            // I don't really see why this is a big deal or why it needs to be checked, as long as the last user gets their
             let from_pair_of_current_hop = match current_hop {
                 Some(Hop {
                     from_token: _,
-                    contract_code_hash: _,
-                    ref contract_address,
-                }) => *contract_address == from,
+                    pair_contract_hash: _,
+                    ref pair_contract_address,
+                }) => *pair_contract_address == from,
                 None => false,
             };
-
             if env.message.sender != from_token_address || !from_pair_of_current_hop {
                 return Err(StdError::generic_err(
-                    "route can only be called by receiving the token of the next hop from the previous pair",
+                    "Route can only be called by receiving the token of the next hop from the previous pair.",
                 ));
             }
 
@@ -305,7 +314,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 1. set expected_return to None because we don't care about slippage mid-route
                 // 2. set the recipient of the swap to be this contract (the router)
                 msgs.push(snip20::send_msg(
-                    next_hop.clone().contract_address,
+                    next_hop.clone().pair_contract_address,
                     amount,
                     Some(to_binary(&Snip20Swap::Swap {
                         expected_return: None,
@@ -356,10 +365,7 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
             // this function is called only by the route creation function
             // it is intended to always make sure that the route was completed successfully
             // otherwise we revert the transaction
-
-            if env.contract.address != env.message.sender {
-                return Err(StdError::unauthorized());
-            }
+            authorize(env.contract.address.clone(), env.message.sender.clone())?;
             if !is_done {
                 return Err(StdError::generic_err(format!(
                     "cannot finalize: route is not done: {:?}",
@@ -462,6 +468,20 @@ mod tests {
         }
     }
 
+    fn mock_pair_contract() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("pair-contract-address"),
+            contract_hash: "pair-contract-contract-hash".to_string(),
+        }
+    }
+
+    fn mock_pair_contract_two() -> SecretContract {
+        SecretContract {
+            address: HumanAddr::from("pair-contract-two-address"),
+            contract_hash: "pair-contract-two-hash".to_string(),
+        }
+    }
+
     fn mock_user_address() -> HumanAddr {
         HumanAddr::from("gary")
     }
@@ -491,9 +511,9 @@ mod tests {
         // when there is less than 2 hops
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Native {},
-            contract_address: mock_buttcoin().address,
-            contract_code_hash: mock_buttcoin().contract_hash,
+            from_token: Token::Native(mock_butt_lode()),
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
         });
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
@@ -520,9 +540,9 @@ mod tests {
         // = when the from_token for the first hop is a native token
         // == when the amount specified does match the amount sent in
         hops.push_back(Hop {
-            from_token: Token::Native {},
-            contract_address: mock_buttcoin().address,
-            contract_code_hash: mock_buttcoin().contract_hash,
+            from_token: Token::Native(mock_butt_lode()),
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
         });
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
@@ -545,6 +565,29 @@ mod tests {
             StdError::generic_err("Received crypto type or amount is wrong.")
         );
         // == when the amount specified matches the amount sent in
+        // == when the to does not match the sender
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: hops.clone(),
+                    to: mock_pair_contract().address,
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        // == * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+
+        // == when the to matches the sender
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
             msg: Some(
@@ -584,18 +627,24 @@ mod tests {
                     Uint128(1_000_000),
                     None,
                     BLOCK_SIZE,
-                    mock_buttcoin().contract_hash.clone(),
-                    mock_buttcoin().address.clone(),
+                    mock_butt_lode().contract_hash.clone(),
+                    mock_butt_lode().address.clone(),
                 )
                 .unwrap(),
                 snip20::send_msg(
-                    env.contract.address.clone(),
+                    mock_pair_contract().address,
                     Uint128(1_000_000),
-                    None,
+                    Some(
+                        to_binary(&Snip20Swap::Swap {
+                            expected_return: None,
+                            to: Some(env.contract.address.clone()),
+                        })
+                        .unwrap()
+                    ),
                     None,
                     BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address,
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
@@ -610,14 +659,40 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            contract_address: mock_buttcoin().address,
-            contract_code_hash: mock_buttcoin().contract_hash,
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
         });
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            contract_address: mock_buttcoin().address,
-            contract_code_hash: mock_buttcoin().contract_hash,
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
         });
+        // == when the to does not match the from
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: Some(
+                to_binary(&Route {
+                    hops: hops.clone(),
+                    to: mock_pair_contract().address,
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    native_out_token: None,
+                })
+                .unwrap(),
+            ),
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            handle_msg.clone(),
+        );
+        // == * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+        // == when the to matches the from
         // == * it sends the token to pair contract to swap
         // == * it finalizes route
         let handle_msg = HandleMsg::Receive {
@@ -644,7 +719,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![
                 snip20::send_msg(
-                    mock_buttcoin().address,
+                    mock_pair_contract().address,
                     Uint128(1_000_000),
                     Some(
                         to_binary(&Snip20Swap::Swap {
@@ -655,8 +730,8 @@ mod tests {
                     ),
                     None,
                     BLOCK_SIZE,
-                    mock_butt_lode().contract_hash,
-                    mock_butt_lode().address,
+                    mock_buttcoin().contract_hash,
+                    mock_buttcoin().address,
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
@@ -667,6 +742,274 @@ mod tests {
                 }),
             ]
         );
+    }
+
+    #[test]
+    fn test_handle_hop() {
+        let (_init_result, mut deps) = init_helper();
+        let env = mock_env(mock_user_address(), &[]);
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        // where there are no hops
+        store_route_state(
+            &mut deps.storage,
+            &RouteState {
+                is_done: false,
+                current_hop: Some(Hop {
+                    from_token: Token::Native(mock_buttcoin()),
+                    pair_contract_address: mock_pair_contract().address,
+                    pair_contract_hash: mock_pair_contract().contract_hash,
+                }),
+                remaining_route: Route {
+                    hops: hops.clone(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    to: mock_user_address(),
+                    native_out_token: None,
+                },
+            },
+        )
+        .unwrap();
+        let handle_msg = HandleMsg::Receive {
+            from: mock_pair_contract().address,
+            msg: None,
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            handle_msg.clone(),
+        );
+        // == * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Route must be at least 1 hop.")
+        );
+
+        // when there are hops
+        hops.push_back(Hop {
+            from_token: Token::Snip20(mock_butt_lode()),
+            pair_contract_address: mock_buttcoin().address,
+            pair_contract_hash: mock_buttcoin().contract_hash,
+        });
+
+        store_route_state(
+            &mut deps.storage,
+            &RouteState {
+                is_done: false,
+                current_hop: Some(Hop {
+                    from_token: Token::Native(mock_butt_lode()),
+                    pair_contract_address: mock_buttcoin().address,
+                    pair_contract_hash: mock_buttcoin().contract_hash,
+                }),
+                remaining_route: Route {
+                    hops,
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    to: mock_user_address(),
+                    native_out_token: None,
+                },
+            },
+        )
+        .unwrap();
+        // = when expected token is a native token
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        hops.push_back(Hop {
+            from_token: Token::Native(mock_buttcoin()),
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
+        });
+        store_route_state(
+            &mut deps.storage,
+            &RouteState {
+                is_done: false,
+                current_hop: Some(Hop {
+                    from_token: Token::Native(mock_butt_lode()),
+                    pair_contract_address: mock_buttcoin().address,
+                    pair_contract_hash: mock_buttcoin().contract_hash,
+                }),
+                remaining_route: Route {
+                    hops,
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    to: mock_user_address(),
+                    native_out_token: None,
+                },
+            },
+        )
+        .unwrap();
+        // = * it raises an error
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: None,
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            handle_msg.clone(),
+        );
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Native tokens can only be the input or output tokens.")
+        );
+        // = when expected token is a snip20
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        hops.push_back(Hop {
+            from_token: Token::Snip20(mock_butt_lode()),
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
+        });
+        store_route_state(
+            &mut deps.storage,
+            &RouteState {
+                is_done: false,
+                current_hop: Some(Hop {
+                    from_token: Token::Native(mock_butt_lode()),
+                    pair_contract_address: mock_pair_contract().address,
+                    pair_contract_hash: mock_pair_contract().contract_hash,
+                }),
+                remaining_route: Route {
+                    hops: hops.clone(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    to: mock_user_address(),
+                    native_out_token: None,
+                },
+            },
+        )
+        .unwrap();
+        // == when not from pair contract
+        let handle_msg = HandleMsg::Receive {
+            from: mock_user_address(),
+            msg: None,
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_buttcoin().address, &[]),
+            handle_msg.clone(),
+        );
+        // == * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Route can only be called by receiving the token of the next hop from the previous pair.")
+        );
+        // == when from pair contract
+        let handle_msg = HandleMsg::Receive {
+            from: mock_pair_contract().address,
+            msg: None,
+            amount: Uint128(1_000_000),
+        };
+        // === when sender is not expected token
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_user_address(), &[]),
+            handle_msg.clone(),
+        );
+        // === * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Route can only be called by receiving the token of the next hop from the previous pair.")
+        );
+        // === when sender is expected token
+        // ==== when this is not the last hop
+        hops.push_back(Hop {
+            from_token: Token::Snip20(mock_butt_lode()),
+            pair_contract_address: mock_pair_contract().address,
+            pair_contract_hash: mock_pair_contract().contract_hash,
+        });
+        store_route_state(
+            &mut deps.storage,
+            &RouteState {
+                is_done: false,
+                current_hop: Some(Hop {
+                    from_token: Token::Native(mock_butt_lode()),
+                    pair_contract_address: mock_pair_contract().address,
+                    pair_contract_hash: mock_pair_contract().contract_hash,
+                }),
+                remaining_route: Route {
+                    hops: hops.clone(),
+                    estimated_amount: Uint128(1_000_000),
+                    minimum_acceptable_amount: Uint128(1_000_000),
+                    to: mock_user_address(),
+                    native_out_token: None,
+                },
+            },
+        )
+        .unwrap();
+        // ==== * it swaps the token
+        let handle_msg = HandleMsg::Receive {
+            from: mock_pair_contract().address,
+            msg: None,
+            amount: Uint128(1_000_000),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_butt_lode().address, &[]),
+            handle_msg.clone(),
+        );
+        let handle_result_unwrapped = handle_result.unwrap();
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![snip20::send_msg(
+                mock_pair_contract().address,
+                Uint128(1_000_000),
+                Some(
+                    to_binary(&Snip20Swap::Swap {
+                        expected_return: None,
+                        to: Some(env.contract.address.clone()),
+                    })
+                    .unwrap()
+                ),
+                None,
+                BLOCK_SIZE,
+                mock_butt_lode().contract_hash,
+                mock_butt_lode().address,
+            )
+            .unwrap()]
+        );
+        // ==== * it stores the updated route state
+        let route_state = read_route_state(&deps.storage).unwrap().unwrap();
+        assert_eq!(route_state.is_done, false);
+        assert_eq!(
+            route_state.current_hop.unwrap(),
+            Hop {
+                from_token: Token::Snip20(mock_butt_lode()),
+                pair_contract_address: mock_pair_contract().address,
+                pair_contract_hash: mock_pair_contract().contract_hash,
+            }
+        );
+        hops.pop_front();
+        assert_eq!(
+            route_state.remaining_route,
+            Route {
+                hops,
+                estimated_amount: Uint128(1_000_000),
+                minimum_acceptable_amount: Uint128(1_000_000),
+                to: mock_user_address(),
+                native_out_token: None,
+            },
+        );
+        // ==== when this is the last hop
+        // ===== when the amount is less than the minimum_acceptable_amount
+        let handle_msg = HandleMsg::Receive {
+            from: mock_pair_contract().address,
+            msg: None,
+            amount: Uint128(5),
+        };
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_butt_lode().address, &[]),
+            handle_msg.clone(),
+        );
+        // ===== * it raises an error
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("Operation fell short of minimum_acceptable_amount")
+        );
+        // ===== when the amount is equal to or greater than the minimum_acceptable_amount
+        // ====== when the amount is greater than the esimated amount
+        // ====== when the amount is equal to or less than the estimated amount
     }
 
     #[test]
