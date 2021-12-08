@@ -13,6 +13,22 @@ pub struct Config {
     pub registered_tokens: Vec<HumanAddr>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Hop {
+    pub from_token: Token,
+    pub contract_address: HumanAddr,
+    pub contract_code_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Route {
+    pub hops: VecDeque<Hop>,
+    pub estimated_amount: Uint128,
+    pub minimum_acceptable_amount: Uint128,
+    pub native_out_token: Option<bool>,
+    pub to: HumanAddr,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct RouteState {
     pub is_done: bool,
@@ -24,22 +40,6 @@ pub struct RouteState {
 pub struct SecretContract {
     pub address: HumanAddr,
     pub contract_hash: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Hop {
-    pub from_token: Token,
-    pub contract_address: HumanAddr,
-    pub contract_code_hash: String,
-    pub interaction_type: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Route {
-    pub hops: VecDeque<Hop>,
-    pub estimated_amount: Uint128,
-    pub minimum_acceptable_amount: Uint128,
-    pub to: HumanAddr,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
