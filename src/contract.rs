@@ -1,5 +1,5 @@
 use crate::authorize::authorize;
-use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
+use crate::constants::{BLOCK_SIZE, CONFIG_KEY, VIEWING_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, QueryMsg, Snip20Swap},
     state::{
@@ -354,7 +354,7 @@ fn register_tokens(env: &Env, tokens: Vec<SecretContract>) -> StdResult<HandleRe
             address.clone(),
         )?);
         messages.push(snip20::set_viewing_key_msg(
-            "DoTheRightThing.".into(),
+            VIEWING_KEY.into(),
             None,
             BLOCK_SIZE,
             contract_hash,
@@ -1114,7 +1114,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
-                    "DoTheRightThing.".into(),
+                    VIEWING_KEY.into(),
                     None,
                     BLOCK_SIZE,
                     mock_buttcoin().contract_hash,
@@ -1130,7 +1130,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
-                    "DoTheRightThing.".into(),
+                    VIEWING_KEY.into(),
                     None,
                     BLOCK_SIZE,
                     mock_butt_lode().contract_hash,
