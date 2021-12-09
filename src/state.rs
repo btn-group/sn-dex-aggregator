@@ -23,7 +23,6 @@ pub struct Route {
     pub hops: VecDeque<Hop>,
     pub estimated_amount: Uint128,
     pub minimum_acceptable_amount: Uint128,
-    pub native_out_token: Option<bool>,
     pub to: HumanAddr,
 }
 
