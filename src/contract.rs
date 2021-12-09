@@ -1,5 +1,5 @@
 use crate::authorize::authorize;
-use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
+use crate::constants::{BLOCK_SIZE, CONFIG_KEY, VIEWING_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, QueryMsg, Snip20Swap},
     state::{
@@ -268,12 +268,12 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
                     msgs.push(CosmosMsg::Bank(BankMsg::Send {
                         from_address: env.contract.address.clone(),
-                        to_address: to.clone(),
+                        to_address: to,
                         amount: withdrawal_coins,
                     }));
                 } else {
                     msgs.push(snip20::transfer_msg(
-                        to.clone(),
+                        to,
                         amount,
                         None,
                         BLOCK_SIZE,
@@ -287,7 +287,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 1. set expected_return to None because we don't care about slippage mid-route
                 // 2. set the recipient of the swap to be this contract (the router)
                 msgs.push(snip20::send_msg(
-                    next_hop.clone().smart_contract.unwrap().address,
+                    next_hop.smart_contract.unwrap().address,
                     amount,
                     Some(to_binary(&Snip20Swap::Swap {
                         expected_return: None,
@@ -333,8 +333,8 @@ fn query_crypto_denom<S: Storage, A: Api, Q: Querier>(
         let exchange_rate = snip20::exchange_rate_query(
             &deps.querier,
             BLOCK_SIZE,
-            token.contract_hash.clone(),
-            token.address.clone(),
+            token.contract_hash,
+            token.address,
         )?;
         Ok(exchange_rate.denom)
     }
@@ -354,11 +354,11 @@ fn register_tokens(env: &Env, tokens: Vec<SecretContract>) -> StdResult<HandleRe
             address.clone(),
         )?);
         messages.push(snip20::set_viewing_key_msg(
-            "DoTheRightThing.".into(),
+            VIEWING_KEY.into(),
             None,
             BLOCK_SIZE,
-            contract_hash.clone(),
-            address.clone(),
+            contract_hash,
+            address,
         )?);
     }
 
@@ -399,7 +399,7 @@ mod tests {
             buttcoin: mock_buttcoin(),
             butt_lode: mock_butt_lode(),
         };
-        (init(&mut deps, env.clone(), msg), deps)
+        (init(&mut deps, env, msg), deps)
     }
 
     fn mock_buttcoin() -> SecretContract {
@@ -486,7 +486,7 @@ mod tests {
             ),
             amount: Uint128(1_000_000),
         };
-        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -513,7 +513,7 @@ mod tests {
             ),
             amount: Uint128(5_000_000),
         };
-        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -534,7 +534,7 @@ mod tests {
             ),
             amount: Uint128(1_000_000),
         };
-        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -555,7 +555,7 @@ mod tests {
             ),
             amount: Uint128(1_000_000),
         };
-        let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg.clone()).unwrap();
+        let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg).unwrap();
         // == * it stores the route state
         let route_state: RouteState = read_route_state(&deps.storage).unwrap().unwrap();
         assert_eq!(route_state.current_hop, Some(hops.pop_front().unwrap()));
@@ -578,8 +578,8 @@ mod tests {
                     Uint128(1_000_000),
                     None,
                     BLOCK_SIZE,
-                    mock_butt_lode().contract_hash.clone(),
-                    mock_butt_lode().address.clone(),
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
                 )
                 .unwrap(),
                 snip20::send_msg(
@@ -627,7 +627,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_butt_lode().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         // == * it raises an error
         assert_eq!(
@@ -641,7 +641,7 @@ mod tests {
             from: mock_user_address(),
             msg: Some(
                 to_binary(&Route {
-                    hops: hops.clone(),
+                    hops: hops,
                     to: mock_user_address(),
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
@@ -653,7 +653,7 @@ mod tests {
         let handle_result_unwrapped = handle(
             &mut deps,
             mock_env(mock_butt_lode().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         )
         .unwrap();
         assert_eq!(
@@ -707,7 +707,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_buttcoin().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         // == * it raises an error
         assert_eq!(
@@ -768,7 +768,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_buttcoin().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         assert_eq!(
             handle_result.unwrap_err(),
@@ -805,7 +805,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_buttcoin().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         // == * it raises an error
         assert_eq!(
@@ -819,11 +819,7 @@ mod tests {
             amount: Uint128(1_000_000),
         };
         // === when sender is not expected token
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_user_address(), &[]),
-            handle_msg.clone(),
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_user_address(), &[]), handle_msg);
         // === * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -860,7 +856,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_butt_lode().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
@@ -911,7 +907,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_butt_lode().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         // ===== * it raises an error
         assert_eq!(
@@ -933,7 +929,7 @@ mod tests {
                     smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
-                    hops: hops.clone(),
+                    hops: hops,
                     estimated_amount: Uint128(10_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
@@ -950,7 +946,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_butt_lode().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
@@ -1004,7 +1000,7 @@ mod tests {
         let handle_result = handle(
             &mut deps,
             mock_env(mock_buttcoin().address, &[]),
-            handle_msg.clone(),
+            handle_msg,
         );
         let handle_result_unwrapped = handle_result.unwrap();
         // ======= * it transfers positive slippage to BUTT lode
@@ -1030,7 +1026,7 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address.clone(),
+                    from_address: env.contract.address,
                     to_address: mock_user_address(),
                     amount: vec![Coin {
                         denom: "ubutt".to_string(),
@@ -1066,11 +1062,7 @@ mod tests {
             msg: None,
             amount: Uint128(11_000_000),
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_token().address, &[]),
-            handle_msg.clone(),
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_token().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         // ======= * it transfers the positive slippage to contract initiator
         assert_eq!(
@@ -1107,7 +1099,7 @@ mod tests {
         let handle_msg = HandleMsg::RegisterTokens {
             tokens: vec![mock_buttcoin(), mock_butt_lode()],
         };
-        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         // * it sends a message to register receive for the token and sets a viewing key
         assert_eq!(
@@ -1122,7 +1114,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
-                    "DoTheRightThing.".into(),
+                    VIEWING_KEY.into(),
                     None,
                     BLOCK_SIZE,
                     mock_buttcoin().contract_hash,
@@ -1130,7 +1122,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::register_receive_msg(
-                    env.contract_code_hash.clone(),
+                    env.contract_code_hash,
                     None,
                     BLOCK_SIZE,
                     mock_butt_lode().contract_hash,
@@ -1138,7 +1130,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
-                    "DoTheRightThing.".into(),
+                    VIEWING_KEY.into(),
                     None,
                     BLOCK_SIZE,
                     mock_butt_lode().contract_hash,
