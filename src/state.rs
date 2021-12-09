@@ -15,8 +15,7 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Hop {
     pub from_token: Token,
-    pub pair_contract_address: HumanAddr,
-    pub pair_contract_hash: String,
+    pub smart_contract: Option<SecretContract>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
