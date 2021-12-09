@@ -99,7 +99,6 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     store_route_state(
         &mut deps.storage,
         &RouteState {
-            is_done: false,
             current_hop: Some(first_hop.clone()),
             remaining_route: Route {
                 hops, // hops was mutated earlier when we did `hops.pop_front()`
@@ -200,7 +199,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     // 3'. send `amount` Z to pair Z/W with recepient `to`
     match read_route_state(&deps.storage)? {
         Some(RouteState {
-            is_done: _,
             current_hop,
             remaining_route:
                 Route {
@@ -240,7 +238,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 ));
             }
 
-            let mut is_done = false;
             let mut msgs = vec![];
             let mut current_hop = Some(next_hop.clone());
             if hops.len() == 0 {
@@ -248,7 +245,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 1. set is_done to true for FinalizeRoute
                 // 2. set expected_return for the final swap
                 // 3. set the recipient of the final swap to be the user
-                is_done = true;
                 current_hop = None;
                 if amount.lt(&minimum_acceptable_amount) {
                     return Err(StdError::generic_err(
@@ -330,7 +326,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             store_route_state(
                 &mut deps.storage,
                 &RouteState {
-                    is_done,
                     current_hop,
                     remaining_route: Route {
                         hops, // hops was mutated earlier when we did `hops.pop_front()`
@@ -358,7 +353,6 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     match read_route_state(&deps.storage)? {
         Some(RouteState {
-            is_done,
             current_hop,
             remaining_route,
         }) => {
@@ -366,12 +360,6 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
             // it is intended to always make sure that the route was completed successfully
             // otherwise we revert the transaction
             authorize(env.contract.address.clone(), env.message.sender.clone())?;
-            if !is_done {
-                return Err(StdError::generic_err(format!(
-                    "cannot finalize: route is not done: {:?}",
-                    remaining_route
-                )));
-            }
             if remaining_route.hops.len() != 0 {
                 return Err(StdError::generic_err(format!(
                     "cannot finalize: route still contains hops: {:?}",
@@ -605,7 +593,6 @@ mod tests {
         let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg.clone()).unwrap();
         // == * it stores the route state
         let route_state: RouteState = read_route_state(&deps.storage).unwrap().unwrap();
-        assert_eq!(route_state.is_done, false);
         assert_eq!(route_state.current_hop, Some(hops.pop_front().unwrap()));
         assert_eq!(
             route_state.remaining_route,
@@ -753,7 +740,6 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                is_done: false,
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_buttcoin()),
                     pair_contract_address: mock_pair_contract().address,
@@ -795,7 +781,6 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                is_done: false,
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
                     pair_contract_address: mock_buttcoin().address,
@@ -821,7 +806,6 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                is_done: false,
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
                     pair_contract_address: mock_buttcoin().address,
@@ -862,7 +846,6 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                is_done: false,
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
                     pair_contract_address: mock_pair_contract().address,
@@ -921,7 +904,6 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                is_done: false,
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
                     pair_contract_address: mock_pair_contract().address,
@@ -970,7 +952,6 @@ mod tests {
         );
         // ==== * it stores the updated route state
         let route_state = read_route_state(&deps.storage).unwrap().unwrap();
-        assert_eq!(route_state.is_done, false);
         assert_eq!(
             route_state.current_hop.unwrap(),
             Hop {
