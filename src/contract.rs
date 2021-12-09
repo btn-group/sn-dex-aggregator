@@ -70,7 +70,6 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         to,
         estimated_amount,
         minimum_acceptable_amount,
-        native_out_token,
     } = from_binary(&msg)?;
 
     if hops.len() < 2 {
@@ -103,7 +102,6 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 hops, // hops was mutated earlier when we did `hops.pop_front()`
                 estimated_amount,
                 minimum_acceptable_amount,
-                native_out_token,
                 to: to.clone(),
             },
         },
@@ -196,7 +194,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     estimated_amount,
                     minimum_acceptable_amount,
                     to,
-                    native_out_token,
                 },
         }) => {
             let next_hop: Hop = match hops.pop_front() {
@@ -257,12 +254,13 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     )?);
                     amount = estimated_amount
                 }
-                if native_out_token.is_some() && native_out_token.unwrap() {
+                if next_hop.smart_contract.is_some() {
+                    let smart_contract: SecretContract = next_hop.smart_contract.unwrap();
                     let exchange_rate = snip20::exchange_rate_query(
                         &deps.querier,
                         BLOCK_SIZE,
-                        from_token_code_hash.clone(),
-                        from_token_address.clone(),
+                        smart_contract.contract_hash.clone(),
+                        smart_contract.address.clone(),
                     )?;
                     let denom = exchange_rate.denom;
                     msgs.push(snip20::redeem_msg(
@@ -270,8 +268,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         Some(denom.clone()),
                         None,
                         BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
+                        smart_contract.contract_hash,
+                        smart_contract.address,
                     )?);
                     let withdrawal_coins: Vec<Coin> = vec![Coin {
                         denom: denom,
@@ -319,7 +317,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             estimated_amount,
                             minimum_acceptable_amount,
                             to,
-                            native_out_token,
                         },
                     },
                 )?;
@@ -465,7 +462,6 @@ mod tests {
                     to: mock_user_address(),
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -493,7 +489,6 @@ mod tests {
                     to: mock_user_address(),
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -515,7 +510,6 @@ mod tests {
                     to: mock_pair_contract().address,
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -537,7 +531,6 @@ mod tests {
                     to: mock_user_address(),
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -553,7 +546,6 @@ mod tests {
                 hops,
                 estimated_amount: Uint128(1_000_000),
                 minimum_acceptable_amount: Uint128(1_000_000),
-                native_out_token: None,
                 to: mock_user_address(),
             }
         );
@@ -608,7 +600,6 @@ mod tests {
                     to: mock_pair_contract().address,
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -635,7 +626,6 @@ mod tests {
                     to: mock_user_address(),
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
-                    native_out_token: None,
                 })
                 .unwrap(),
             ),
@@ -686,7 +676,6 @@ mod tests {
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
-                    native_out_token: None,
                 },
             },
         )
@@ -725,7 +714,6 @@ mod tests {
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
-                    native_out_token: None,
                 },
             },
         )
@@ -748,7 +736,6 @@ mod tests {
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
-                    native_out_token: None,
                 },
             },
         )
@@ -786,7 +773,6 @@ mod tests {
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
-                    native_out_token: None,
                 },
             },
         )
@@ -842,7 +828,6 @@ mod tests {
                     estimated_amount: Uint128(1_000_000),
                     minimum_acceptable_amount: Uint128(1_000_000),
                     to: mock_user_address(),
-                    native_out_token: None,
                 },
             },
         )
@@ -895,7 +880,6 @@ mod tests {
                 estimated_amount: Uint128(1_000_000),
                 minimum_acceptable_amount: Uint128(1_000_000),
                 to: mock_user_address(),
-                native_out_token: None,
             },
         );
         // ==== when this is the last hop
