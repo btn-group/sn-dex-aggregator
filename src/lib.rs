@@ -1,4 +1,5 @@
 mod asset;
+mod authorize;
 mod constants;
 pub mod contract;
 pub mod msg;

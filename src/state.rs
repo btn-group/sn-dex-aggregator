@@ -15,8 +15,8 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Hop {
     pub from_token: Token,
-    pub contract_address: HumanAddr,
-    pub contract_code_hash: String,
+    pub pair_contract_address: HumanAddr,
+    pub pair_contract_hash: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -45,7 +45,7 @@ pub struct SecretContract {
 #[serde(rename_all = "snake_case")]
 pub enum Token {
     Snip20(SecretContract),
-    Native,
+    Native(SecretContract),
 }
 
 pub fn store_route_state<S: Storage>(storage: &mut S, data: &RouteState) -> StdResult<()> {
