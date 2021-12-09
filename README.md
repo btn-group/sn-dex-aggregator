@@ -9,6 +9,16 @@
 * We'd prefer an option where all positive slippage is swapped into BUTT and sent to BUTT lode, but can't figure out a good solution right now.
 * For this version of the contract, if there's any positive slippage and the out token is BUTT, we'll send it to BUTT lode, but the rest we'll send to a team account.
 
+### Algorithm example
+1. ATOM -> sATOM via sATOM smart contract
+2. sATOM -> SIENNA via trading pair smart contract on Sienna
+3. SIENNA -> sWBTC ...
+4. sWBTC -> BUTT via trading pair smart contract on Secret swap
+5. BUTT -> sXMR ...
+6. sXMR -> SEFI ...
+7. SEFI -> sSCRT ...
+8. sSCRT -> SCRT via sSCRT smart contract
+
 ## References
 1. DEX aggregator: https://btn.group/secret_network/dex_aggregator
 2. Secret contracts guide: https://github.com/enigmampc/secret-contracts-guide
