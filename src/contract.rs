@@ -9,7 +9,7 @@ use crate::{
 };
 use cosmwasm_std::{
     from_binary, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse,
-    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128,
+    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
@@ -49,6 +49,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             msg: None,
             amount,
         } => handle_hop(deps, &env, from, amount),
+        HandleMsg::FinalizeRoute {} => finalize_route(deps, &env),
         HandleMsg::RegisterTokens { tokens } => register_tokens(&env, tokens),
     }
 }
@@ -164,6 +165,16 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         }
     }
 
+    msgs.push(
+        // finalize the route at the end, to make sure the route was completed successfully
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: env.contract.address.clone(),
+            callback_code_hash: env.contract_code_hash.clone(),
+            msg: to_binary(&HandleMsg::FinalizeRoute {})?,
+            send: vec![],
+        }),
+    );
+
     Ok(HandleResponse {
         messages: msgs,
         log: vec![],
@@ -268,12 +279,12 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
                     msgs.push(CosmosMsg::Bank(BankMsg::Send {
                         from_address: env.contract.address.clone(),
-                        to_address: to,
+                        to_address: to.clone(),
                         amount: withdrawal_coins,
                     }));
                 } else {
                     msgs.push(snip20::transfer_msg(
-                        to,
+                        to.clone(),
                         amount,
                         None,
                         BLOCK_SIZE,
@@ -281,7 +292,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         from_token_address,
                     )?);
                 }
-                delete_route_state(&mut deps.storage);
             } else {
                 // not last hop
                 // 1. set expected_return to None because we don't care about slippage mid-route
@@ -298,20 +308,19 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     from_token_code_hash,
                     from_token_address,
                 )?);
-
-                store_route_state(
-                    &mut deps.storage,
-                    &RouteState {
-                        current_hop,
-                        remaining_route: Route {
-                            hops, // hops was mutated earlier when we did `hops.pop_front()`
-                            estimated_amount,
-                            minimum_acceptable_amount,
-                            to,
-                        },
-                    },
-                )?;
             }
+            store_route_state(
+                &mut deps.storage,
+                &RouteState {
+                    current_hop,
+                    remaining_route: Route {
+                        hops, // hops was mutated earlier when we did `hops.pop_front()`
+                        estimated_amount,
+                        minimum_acceptable_amount,
+                        to,
+                    },
+                },
+            )?;
 
             Ok(HandleResponse {
                 messages: msgs,
@@ -320,6 +329,32 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             })
         }
         None => Err(StdError::generic_err("cannot find route")),
+    }
+}
+
+fn finalize_route<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+) -> StdResult<HandleResponse> {
+    match read_route_state(&deps.storage)? {
+        Some(RouteState {
+            remaining_route, ..
+        }) => {
+            // this function is called only by the route creation function
+            // it is intended to always make sure that the route was completed successfully
+            // otherwise we revert the transaction
+            authorize(env.contract.address.clone(), env.message.sender.clone())?;
+            if remaining_route.hops.len() != 0 {
+                return Err(StdError::generic_err(format!(
+                    "cannot finalize: route still contains hops: {:?}",
+                    remaining_route
+                )));
+            }
+
+            delete_route_state(&mut deps.storage);
+            Ok(HandleResponse::default())
+        }
+        None => Err(StdError::generic_err("no route to finalize")),
     }
 }
 
@@ -342,7 +377,6 @@ fn query_crypto_denom<S: Storage, A: Api, Q: Querier>(
 
 fn register_tokens(env: &Env, tokens: Vec<SecretContract>) -> StdResult<HandleResponse> {
     let mut messages = vec![];
-
     for token in tokens {
         let address = token.address;
         let contract_hash = token.contract_hash;
@@ -376,7 +410,6 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     match msg {
         QueryMsg::Config {} => {
             let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-
             Ok(to_binary(&config)?)
         }
     }
@@ -598,6 +631,12 @@ mod tests {
                     mock_butt_lode().address,
                 )
                 .unwrap(),
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
+                    send: vec![],
+                }),
             ]
         );
         // = when the from_token for the first hop is a snip20
@@ -658,22 +697,30 @@ mod tests {
         .unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
-            vec![snip20::send_msg(
-                mock_pair_contract().address,
-                Uint128(1_000_000),
-                Some(
-                    to_binary(&Snip20Swap::Swap {
-                        expected_return: None,
-                        to: Some(env.contract.address.clone()),
-                    })
-                    .unwrap()
-                ),
-                None,
-                BLOCK_SIZE,
-                mock_butt_lode().contract_hash,
-                mock_butt_lode().address,
-            )
-            .unwrap(),]
+            vec![
+                snip20::send_msg(
+                    mock_pair_contract().address,
+                    Uint128(1_000_000),
+                    Some(
+                        to_binary(&Snip20Swap::Swap {
+                            expected_return: None,
+                            to: Some(env.contract.address.clone()),
+                        })
+                        .unwrap()
+                    ),
+                    None,
+                    BLOCK_SIZE,
+                    mock_butt_lode().contract_hash,
+                    mock_butt_lode().address,
+                )
+                .unwrap(),
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
+                    send: vec![],
+                }),
+            ]
         );
     }
 
