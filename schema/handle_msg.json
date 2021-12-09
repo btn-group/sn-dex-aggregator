@@ -38,17 +38,6 @@
     {
       "type": "object",
       "required": [
-        "finalize_route"
-      ],
-      "properties": {
-        "finalize_route": {
-          "type": "object"
-        }
-      }
-    },
-    {
-      "type": "object",
-      "required": [
         "register_tokens"
       ],
       "properties": {
