@@ -121,7 +121,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
 
             // first hop is a snip20
             msgs.push(snip20::send_msg(
-                first_hop.pair_contract_address,
+                first_hop.smart_contract.unwrap().address,
                 amount,
                 // build swap msg for the next hop
                 Some(to_binary(&Snip20Swap::Swap {
@@ -150,7 +150,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 address.clone(),
             )?);
             msgs.push(snip20::send_msg(
-                first_hop.pair_contract_address,
+                first_hop.smart_contract.unwrap().address,
                 amount,
                 // build swap msg for the next hop
                 Some(to_binary(&Snip20Swap::Swap {
@@ -227,9 +227,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             let from_pair_of_current_hop = match current_hop {
                 Some(Hop {
                     from_token: _,
-                    pair_contract_hash: _,
-                    ref pair_contract_address,
-                }) => *pair_contract_address == from,
+                    smart_contract,
+                }) => smart_contract.unwrap().address == from,
                 None => false,
             };
             if env.message.sender != from_token_address || !from_pair_of_current_hop {
@@ -310,7 +309,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 // 1. set expected_return to None because we don't care about slippage mid-route
                 // 2. set the recipient of the swap to be this contract (the router)
                 msgs.push(snip20::send_msg(
-                    next_hop.clone().pair_contract_address,
+                    next_hop.clone().smart_contract.unwrap().address,
                     amount,
                     Some(to_binary(&Snip20Swap::Swap {
                         expected_return: None,
@@ -500,8 +499,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Native(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
@@ -529,8 +527,7 @@ mod tests {
         // == when the amount specified does match the amount sent in
         hops.push_back(Hop {
             from_token: Token::Native(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
@@ -646,13 +643,11 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         // == when the to does not match the from
         let handle_msg = HandleMsg::Receive {
@@ -742,8 +737,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_buttcoin()),
-                    pair_contract_address: mock_pair_contract().address,
-                    pair_contract_hash: mock_pair_contract().contract_hash,
+                    smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
@@ -774,8 +768,7 @@ mod tests {
         // when there are hops
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            pair_contract_address: mock_buttcoin().address,
-            pair_contract_hash: mock_buttcoin().contract_hash,
+            smart_contract: Some(mock_buttcoin()),
         });
 
         store_route_state(
@@ -783,8 +776,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
-                    pair_contract_address: mock_buttcoin().address,
-                    pair_contract_hash: mock_buttcoin().contract_hash,
+                    smart_contract: Some(mock_buttcoin()),
                 }),
                 remaining_route: Route {
                     hops,
@@ -800,16 +792,14 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Native(mock_buttcoin()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         store_route_state(
             &mut deps.storage,
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
-                    pair_contract_address: mock_buttcoin().address,
-                    pair_contract_hash: mock_buttcoin().contract_hash,
+                    smart_contract: Some(mock_buttcoin()),
                 }),
                 remaining_route: Route {
                     hops,
@@ -840,16 +830,14 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         store_route_state(
             &mut deps.storage,
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
-                    pair_contract_address: mock_pair_contract().address,
-                    pair_contract_hash: mock_pair_contract().contract_hash,
+                    smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
@@ -898,16 +886,14 @@ mod tests {
         // ==== when this is not the last hop
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_butt_lode()),
-            pair_contract_address: mock_pair_contract().address,
-            pair_contract_hash: mock_pair_contract().contract_hash,
+            smart_contract: Some(mock_pair_contract()),
         });
         store_route_state(
             &mut deps.storage,
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: Token::Native(mock_butt_lode()),
-                    pair_contract_address: mock_pair_contract().address,
-                    pair_contract_hash: mock_pair_contract().contract_hash,
+                    smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
@@ -956,8 +942,7 @@ mod tests {
             route_state.current_hop.unwrap(),
             Hop {
                 from_token: Token::Snip20(mock_butt_lode()),
-                pair_contract_address: mock_pair_contract().address,
-                pair_contract_hash: mock_pair_contract().contract_hash,
+                smart_contract: Some(mock_pair_contract()),
             }
         );
         hops.pop_front();
