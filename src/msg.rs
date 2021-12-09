@@ -17,7 +17,6 @@ pub enum HandleMsg {
         msg: Option<Binary>,
         amount: Uint128,
     },
-    FinalizeRoute {},
     RegisterTokens {
         tokens: Vec<SecretContract>,
     },
