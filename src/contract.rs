@@ -350,7 +350,6 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
                     remaining_route
                 )));
             }
-
             delete_route_state(&mut deps.storage);
             Ok(HandleResponse::default())
         }
@@ -489,6 +488,104 @@ mod tests {
     }
 
     // === HANDLE TESTS ===
+    #[test]
+    fn test_finalize_route() {
+        let (_init_result, mut deps) = init_helper();
+        let env = mock_env(mock_user_address(), &[]);
+
+        // when route state does not exist
+        // * it raises an error
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("no route to finalize")
+        );
+
+        // when route state exists
+        // = when there are hops
+        let mut hops: VecDeque<Hop> = VecDeque::new();
+        hops.push_back(Hop {
+            from_token: Token::Native(mock_butt_lode()),
+            smart_contract: Some(mock_pair_contract()),
+        });
+        let route_state: RouteState = RouteState {
+            current_hop: Some(Hop {
+                from_token: Token::Native(mock_buttcoin()),
+                smart_contract: Some(mock_pair_contract()),
+            }),
+            remaining_route: Route {
+                hops: hops,
+                estimated_amount: Uint128(1_000_000),
+                minimum_acceptable_amount: Uint128(1_000_000),
+                to: mock_user_address(),
+            },
+        };
+        store_route_state(&mut deps.storage, &route_state).unwrap();
+        // == when it isn't called by the contract
+        // == * it raises an error
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+        // == when it's called by the contract
+        // == * it raises an error
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        let handle_result = handle(
+            &mut deps,
+            mock_env(env.contract.address.clone(), &[]),
+            handle_msg,
+        );
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err(format!(
+                "cannot finalize: route still contains hops: {:?}",
+                route_state.remaining_route
+            ))
+        );
+
+        // = when there are no hops
+        let hops: VecDeque<Hop> = VecDeque::new();
+        let route_state: RouteState = RouteState {
+            current_hop: Some(Hop {
+                from_token: Token::Native(mock_buttcoin()),
+                smart_contract: Some(mock_pair_contract()),
+            }),
+            remaining_route: Route {
+                hops: hops,
+                estimated_amount: Uint128(1_000_000),
+                minimum_acceptable_amount: Uint128(1_000_000),
+                to: mock_user_address(),
+            },
+        };
+        store_route_state(&mut deps.storage, &route_state).unwrap();
+        // == when it isn't called by the contract
+        // == * it raises an error
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+        // == when it's called by the contract
+        // == * it returns an Ok response
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        handle(
+            &mut deps,
+            mock_env(env.contract.address.clone(), &[]),
+            handle_msg,
+        )
+        .unwrap();
+        let handle_msg = HandleMsg::FinalizeRoute {};
+        let handle_result = handle(&mut deps, mock_env(env.contract.address, &[]), handle_msg);
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::generic_err("no route to finalize")
+        );
+    }
+
     #[test]
     fn test_handle_first_hop() {
         let (_init_result, mut deps) = init_helper();

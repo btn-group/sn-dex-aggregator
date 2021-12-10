@@ -1,6 +1,6 @@
 use crate::constants::KEY_ROUTE_STATE;
 use cosmwasm_std::{HumanAddr, StdResult, Storage, Uint128};
-use cosmwasm_storage::{ReadonlySingleton, Singleton};
+use cosmwasm_storage::{singleton, singleton_read};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -46,13 +46,13 @@ pub enum Token {
 }
 
 pub fn store_route_state<S: Storage>(storage: &mut S, data: &RouteState) -> StdResult<()> {
-    Singleton::new(storage, KEY_ROUTE_STATE).save(data)
+    singleton(storage, KEY_ROUTE_STATE).save(data)
 }
 
 pub fn read_route_state<S: Storage>(storage: &S) -> StdResult<Option<RouteState>> {
-    ReadonlySingleton::new(storage, KEY_ROUTE_STATE).may_load()
+    singleton_read(storage, KEY_ROUTE_STATE).may_load()
 }
 
 pub fn delete_route_state<S: Storage>(storage: &mut S) {
-    storage.remove(KEY_ROUTE_STATE);
+    singleton::<S, Option<RouteState>>(storage, KEY_ROUTE_STATE).remove();
 }
