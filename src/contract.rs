@@ -603,11 +603,14 @@ mod tests {
     #[test]
     fn test_handle_first_hop() {
         let (_init_result, mut deps) = init_helper();
+        let minimum_acceptable_amount: Uint128 = Uint128(1_000_000);
+        let estimated_amount: Uint128 = Uint128(10_000_000);
+        let transaction_amount: Uint128 = minimum_acceptable_amount;
         let env = mock_env(
             mock_user_address(),
             &[Coin {
                 denom: "uatom".to_string(),
-                amount: Uint128(1_000_000),
+                amount: transaction_amount,
             }],
         );
 
@@ -623,12 +626,12 @@ mod tests {
                 to_binary(&Route {
                     hops: VecDeque::new(),
                     to: mock_user_address(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // * it raises an error
@@ -650,12 +653,12 @@ mod tests {
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_user_address(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(5_000_000),
+            amount: transaction_amount + transaction_amount,
         };
         let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // == * it raises an error
@@ -671,12 +674,12 @@ mod tests {
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_pair_contract().address,
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(&mut deps, env.clone(), handle_msg);
         // == * it raises an error
@@ -692,12 +695,12 @@ mod tests {
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_user_address(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg).unwrap();
         // == * it stores the route state
@@ -707,8 +710,8 @@ mod tests {
             route_state.remaining_route,
             Route {
                 hops,
-                estimated_amount: Uint128(1_000_000),
-                minimum_acceptable_amount: Uint128(1_000_000),
+                estimated_amount: estimated_amount,
+                minimum_acceptable_amount: minimum_acceptable_amount,
                 to: mock_user_address(),
             }
         );
@@ -719,7 +722,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![
                 snip20::deposit_msg(
-                    Uint128(1_000_000),
+                    transaction_amount,
                     None,
                     BLOCK_SIZE,
                     mock_sscrt().contract_hash,
@@ -728,7 +731,7 @@ mod tests {
                 .unwrap(),
                 snip20::send_msg(
                     mock_pair_contract().address,
-                    Uint128(1_000_000),
+                    transaction_amount,
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
@@ -767,12 +770,12 @@ mod tests {
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_pair_contract().address,
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -793,12 +796,12 @@ mod tests {
                 to_binary(&Route {
                     hops: hops,
                     to: mock_user_address(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result_unwrapped = handle(
             &mut deps,
@@ -811,7 +814,7 @@ mod tests {
             vec![
                 snip20::send_msg(
                     mock_pair_contract().address,
-                    Uint128(1_000_000),
+                    transaction_amount,
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
@@ -839,6 +842,9 @@ mod tests {
     fn test_handle_hop() {
         let (_init_result, mut deps) = init_helper();
         let mut hops: VecDeque<Hop> = VecDeque::new();
+        let minimum_acceptable_amount: Uint128 = Uint128(1_000_000);
+        let estimated_amount: Uint128 = Uint128(10_000_000);
+        let transaction_amount: Uint128 = minimum_acceptable_amount;
         // where there are no hops
         store_route_state(
             &mut deps.storage,
@@ -849,8 +855,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -859,7 +865,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -887,8 +893,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops,
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -909,8 +915,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops,
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -920,7 +926,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
             msg: None,
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -946,8 +952,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -957,7 +963,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
             msg: None,
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -973,7 +979,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         // === when sender is not expected token
         let handle_result = handle(&mut deps, mock_env(mock_user_address(), &[]), handle_msg);
@@ -997,8 +1003,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops: hops.clone(),
-                    estimated_amount: Uint128(1_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -1008,7 +1014,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(1_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -1020,7 +1026,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![snip20::send_msg(
                 mock_pair_contract().address,
-                Uint128(1_000_000),
+                transaction_amount,
                 Some(
                     to_binary(&Snip20Swap::Swap {
                         expected_return: None,
@@ -1049,8 +1055,8 @@ mod tests {
             route_state.remaining_route,
             Route {
                 hops,
-                estimated_amount: Uint128(1_000_000),
-                minimum_acceptable_amount: Uint128(1_000_000),
+                estimated_amount: estimated_amount,
+                minimum_acceptable_amount: minimum_acceptable_amount,
                 to: mock_user_address(),
             },
         );
@@ -1059,7 +1065,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(5),
+            amount: (minimum_acceptable_amount - Uint128(1)).unwrap(),
         };
         let handle_result = handle(
             &mut deps,
@@ -1087,8 +1093,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops: hops,
-                    estimated_amount: Uint128(10_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -1098,7 +1104,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(2_000_000),
+            amount: transaction_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -1110,7 +1116,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![snip20::transfer_msg(
                 mock_user_address(),
-                Uint128(2_000_000),
+                transaction_amount,
                 None,
                 BLOCK_SIZE,
                 mock_butt_lode().contract_hash,
@@ -1118,12 +1124,6 @@ mod tests {
             )
             .unwrap()]
         );
-        // ======= * it deletes route state
-        // Not sure why this doesn't work?
-        // assert_eq!(
-        //     read_route_state(&mut deps.storage).unwrap().is_some(),
-        //     false
-        // )
         // ======= when the current hop has a smart contract associated with it
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
@@ -1139,8 +1139,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops,
-                    estimated_amount: Uint128(10_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -1152,7 +1152,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
-            amount: Uint128(11_000_000),
+            amount: estimated_amount + estimated_amount,
         };
         let handle_result = handle(
             &mut deps,
@@ -1166,7 +1166,7 @@ mod tests {
             vec![
                 snip20::transfer_msg(
                     mock_butt_lode().address,
-                    Uint128(1_000_000),
+                    estimated_amount,
                     None,
                     BLOCK_SIZE,
                     mock_buttcoin().contract_hash,
@@ -1174,7 +1174,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::redeem_msg(
-                    Uint128(10_000_000),
+                    estimated_amount,
                     Some("ubutt".to_string()),
                     None,
                     BLOCK_SIZE,
@@ -1187,7 +1187,7 @@ mod tests {
                     to_address: mock_user_address(),
                     amount: vec![Coin {
                         denom: "ubutt".to_string(),
-                        amount: Uint128(10_000_000)
+                        amount: estimated_amount
                     }],
                 })
             ]
@@ -1207,8 +1207,8 @@ mod tests {
                 }),
                 remaining_route: Route {
                     hops,
-                    estimated_amount: Uint128(10_000_000),
-                    minimum_acceptable_amount: Uint128(1_000_000),
+                    estimated_amount: estimated_amount,
+                    minimum_acceptable_amount: minimum_acceptable_amount,
                     to: mock_user_address(),
                 },
             },
@@ -1217,7 +1217,7 @@ mod tests {
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract_two().address,
             msg: None,
-            amount: Uint128(11_000_000),
+            amount: estimated_amount + estimated_amount,
         };
         let handle_result = handle(&mut deps, mock_env(mock_token().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
@@ -1227,7 +1227,7 @@ mod tests {
             vec![
                 snip20::transfer_msg(
                     mock_contract_initiator_address(),
-                    Uint128(1_000_000),
+                    estimated_amount,
                     None,
                     BLOCK_SIZE,
                     mock_token().contract_hash,
@@ -1236,7 +1236,7 @@ mod tests {
                 .unwrap(),
                 snip20::transfer_msg(
                     mock_user_address(),
-                    Uint128(10_000_000),
+                    estimated_amount,
                     None,
                     BLOCK_SIZE,
                     mock_token().contract_hash,
