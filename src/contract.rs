@@ -500,7 +500,7 @@ mod tests {
         // when route state does not exist
         // * it raises an error
         let handle_msg = HandleMsg::FinalizeRoute {};
-        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
         assert_eq!(
             handle_result.unwrap_err(),
             StdError::generic_err("no route to finalize")
@@ -528,19 +528,17 @@ mod tests {
         store_route_state(&mut deps.storage, &route_state).unwrap();
         // == when it isn't called by the contract
         // == * it raises an error
-        let handle_msg = HandleMsg::FinalizeRoute {};
-        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
         assert_eq!(
             handle_result.unwrap_err(),
             StdError::Unauthorized { backtrace: None }
         );
         // == when it's called by the contract
         // == * it raises an error
-        let handle_msg = HandleMsg::FinalizeRoute {};
         let handle_result = handle(
             &mut deps,
             mock_env(mock_contract_address(), &[]),
-            handle_msg,
+            handle_msg.clone(),
         );
         assert_eq!(
             handle_result.unwrap_err(),
@@ -567,22 +565,19 @@ mod tests {
         store_route_state(&mut deps.storage, &route_state).unwrap();
         // == when it isn't called by the contract
         // == * it raises an error
-        let handle_msg = HandleMsg::FinalizeRoute {};
-        let handle_result = handle(&mut deps, env.clone(), handle_msg);
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
         assert_eq!(
             handle_result.unwrap_err(),
             StdError::Unauthorized { backtrace: None }
         );
         // == when it's called by the contract
         // == * it returns an Ok response
-        let handle_msg = HandleMsg::FinalizeRoute {};
         handle(
             &mut deps,
             mock_env(mock_contract_address(), &[]),
-            handle_msg,
+            handle_msg.clone(),
         )
         .unwrap();
-        let handle_msg = HandleMsg::FinalizeRoute {};
         let handle_result = handle(&mut deps, mock_env(env.contract.address, &[]), handle_msg);
         assert_eq!(
             handle_result.unwrap_err(),
