@@ -361,7 +361,9 @@ fn query_crypto_denom<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     token: SecretContract,
 ) -> StdResult<String> {
-    if token.address == HumanAddr::from("mock-buttcoin-address") {
+    if token.address == HumanAddr::from("mock-sscrt-address")
+        || token.address == HumanAddr::from("mock-buttcoin-address")
+    {
         Ok("ubutt".to_string())
     } else {
         let exchange_rate = snip20::exchange_rate_query(
@@ -841,18 +843,16 @@ mod tests {
     #[test]
     fn test_handle_hop() {
         let (_init_result, mut deps) = init_helper();
-        let mut hops: VecDeque<Hop> = VecDeque::new();
         let minimum_acceptable_amount: Uint128 = Uint128(1_000_000);
         let estimated_amount: Uint128 = Uint128(10_000_000);
         let transaction_amount: Uint128 = minimum_acceptable_amount;
+
         // where there are no hops
+        let mut hops: VecDeque<Hop> = VecDeque::new();
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
-                    from_token: mock_token_native(),
-                    smart_contract: Some(mock_pair_contract()),
-                }),
+                current_hop: None,
                 remaining_route: Route {
                     hops: hops.clone(),
                     estimated_amount: estimated_amount,
@@ -879,29 +879,7 @@ mod tests {
         );
 
         // when there are hops
-        hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
-            smart_contract: Some(mock_buttcoin()),
-        });
-
-        store_route_state(
-            &mut deps.storage,
-            &RouteState {
-                current_hop: Some(Hop {
-                    from_token: mock_token_native(),
-                    smart_contract: Some(mock_buttcoin()),
-                }),
-                remaining_route: Route {
-                    hops,
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
-                    to: mock_user_address(),
-                },
-            },
-        )
-        .unwrap();
         // = when expected token is a native token
-        let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
             smart_contract: Some(mock_pair_contract()),
@@ -940,8 +918,12 @@ mod tests {
         // = when expected token is a snip20
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
-            smart_contract: Some(mock_pair_contract()),
+            from_token: mock_token_snip20(),
+            smart_contract: Some(mock_pair_contract_two()),
+        });
+        hops.push_back(Hop {
+            from_token: mock_token_snip20(),
+            smart_contract: Some(mock_pair_contract_two()),
         });
         store_route_state(
             &mut deps.storage,
@@ -965,11 +947,7 @@ mod tests {
             msg: None,
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -990,42 +968,18 @@ mod tests {
         );
         // === when sender is expected token
         // ==== when this is not the last hop
-        hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
-            smart_contract: Some(mock_pair_contract()),
-        });
-        store_route_state(
-            &mut deps.storage,
-            &RouteState {
-                current_hop: Some(Hop {
-                    from_token: mock_token_native(),
-                    smart_contract: Some(mock_pair_contract()),
-                }),
-                remaining_route: Route {
-                    hops: hops.clone(),
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
-                    to: mock_user_address(),
-                },
-            },
-        )
-        .unwrap();
         // ==== * it swaps the token
         let handle_msg = HandleMsg::Receive {
             from: mock_pair_contract().address,
             msg: None,
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_butt_lode().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
             vec![snip20::send_msg(
-                mock_pair_contract().address,
+                mock_pair_contract_two().address,
                 transaction_amount,
                 Some(
                     to_binary(&Snip20Swap::Swap {
@@ -1036,8 +990,8 @@ mod tests {
                 ),
                 None,
                 BLOCK_SIZE,
-                mock_butt_lode().contract_hash,
-                mock_butt_lode().address,
+                mock_sscrt().contract_hash,
+                mock_sscrt().address,
             )
             .unwrap()]
         );
@@ -1046,8 +1000,8 @@ mod tests {
         assert_eq!(
             route_state.current_hop.unwrap(),
             Hop {
-                from_token: Token::Snip20(mock_butt_lode()),
-                smart_contract: Some(mock_pair_contract()),
+                from_token: mock_token_snip20(),
+                smart_contract: Some(mock_pair_contract_two()),
             }
         );
         hops.pop_front();
@@ -1063,15 +1017,11 @@ mod tests {
         // ==== when this is the last hop
         // ===== when the amount is less than the minimum_acceptable_amount
         let handle_msg = HandleMsg::Receive {
-            from: mock_pair_contract().address,
+            from: mock_pair_contract_two().address,
             msg: None,
             amount: (minimum_acceptable_amount - Uint128(1)).unwrap(),
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_butt_lode().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         // ===== * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -1081,7 +1031,7 @@ mod tests {
         // ======= when the current hop does not have a smart contract associated with it
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
+            from_token: mock_token_snip20(),
             smart_contract: None,
         });
         store_route_state(
@@ -1106,11 +1056,7 @@ mod tests {
             msg: None,
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_butt_lode().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
@@ -1119,8 +1065,8 @@ mod tests {
                 transaction_amount,
                 None,
                 BLOCK_SIZE,
-                mock_butt_lode().contract_hash,
-                mock_butt_lode().address,
+                mock_sscrt().contract_hash,
+                mock_sscrt().address,
             )
             .unwrap()]
         );
@@ -1195,7 +1141,7 @@ mod tests {
         // ======= when the from token is not BUTT
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_token()),
+            from_token: mock_token_snip20(),
             smart_contract: None,
         });
         store_route_state(
@@ -1219,7 +1165,7 @@ mod tests {
             msg: None,
             amount: estimated_amount + estimated_amount,
         };
-        let handle_result = handle(&mut deps, mock_env(mock_token().address, &[]), handle_msg);
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         // ======= * it transfers the positive slippage to contract initiator
         assert_eq!(
@@ -1230,8 +1176,8 @@ mod tests {
                     estimated_amount,
                     None,
                     BLOCK_SIZE,
-                    mock_token().contract_hash,
-                    mock_token().address,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
                 )
                 .unwrap(),
                 snip20::transfer_msg(
@@ -1239,8 +1185,8 @@ mod tests {
                     estimated_amount,
                     None,
                     BLOCK_SIZE,
-                    mock_token().contract_hash,
-                    mock_token().address,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
                 )
                 .unwrap(),
             ]
