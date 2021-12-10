@@ -1254,7 +1254,7 @@ mod tests {
 
         // When tokens are in the parameter
         let handle_msg = HandleMsg::RegisterTokens {
-            tokens: vec![mock_buttcoin(), mock_butt_lode()],
+            tokens: vec![mock_buttcoin(), mock_token()],
         };
         let handle_result = handle(&mut deps, env.clone(), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
@@ -1282,16 +1282,16 @@ mod tests {
                     env.contract_code_hash,
                     None,
                     BLOCK_SIZE,
-                    mock_butt_lode().contract_hash,
-                    mock_butt_lode().address,
+                    mock_token().contract_hash,
+                    mock_token().address,
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
                     VIEWING_KEY.into(),
                     None,
                     BLOCK_SIZE,
-                    mock_butt_lode().contract_hash,
-                    mock_butt_lode().address,
+                    mock_token().contract_hash,
+                    mock_token().address,
                 )
                 .unwrap()
             ]
