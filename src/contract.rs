@@ -448,8 +448,12 @@ mod tests {
         }
     }
 
-    fn mock_contract_address() -> HumanAddr {
-        mock_env(mock_user_address(), &[]).contract.address
+    fn mock_contract() -> SecretContract {
+        let env = mock_env(mock_user_address(), &[]);
+        SecretContract {
+            address: env.contract.address,
+            contract_hash: env.contract_code_hash,
+        }
     }
 
     fn mock_contract_initiator_address() -> HumanAddr {
@@ -552,7 +556,7 @@ mod tests {
         // == * it raises an error
         let handle_result = handle(
             &mut deps,
-            mock_env(mock_contract_address(), &[]),
+            mock_env(mock_contract().address, &[]),
             handle_msg.clone(),
         );
         assert_eq!(
@@ -589,13 +593,13 @@ mod tests {
         // == * it returns an Ok response
         handle(
             &mut deps,
-            mock_env(mock_contract_address(), &[]),
+            mock_env(mock_contract().address, &[]),
             handle_msg.clone(),
         )
         .unwrap();
         let handle_result = handle(
             &mut deps,
-            mock_env(mock_contract_address(), &[]),
+            mock_env(mock_contract().address, &[]),
             handle_msg,
         );
         assert_eq!(
@@ -739,7 +743,7 @@ mod tests {
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
-                            to: Some(mock_contract_address()),
+                            to: Some(mock_contract().address),
                         })
                         .unwrap()
                     ),
@@ -750,8 +754,8 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: mock_contract_address(),
-                    callback_code_hash: env.contract_code_hash.clone(),
+                    contract_addr: mock_contract().address,
+                    callback_code_hash: mock_contract().contract_hash.clone(),
                     msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
                     send: vec![],
                 }),
@@ -814,7 +818,7 @@ mod tests {
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
-                            to: Some(mock_contract_address()),
+                            to: Some(mock_contract().address),
                         })
                         .unwrap()
                     ),
@@ -825,8 +829,8 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: mock_contract_address(),
-                    callback_code_hash: env.contract_code_hash.clone(),
+                    contract_addr: mock_contract().address,
+                    callback_code_hash: mock_contract().contract_hash.clone(),
                     msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
                     send: vec![],
                 }),
@@ -1026,7 +1030,7 @@ mod tests {
                 Some(
                     to_binary(&Snip20Swap::Swap {
                         expected_return: None,
-                        to: Some(mock_contract_address()),
+                        to: Some(mock_contract().address),
                     })
                     .unwrap()
                 ),
@@ -1179,7 +1183,7 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Bank(BankMsg::Send {
-                    from_address: mock_contract_address(),
+                    from_address: mock_contract().address,
                     to_address: mock_user_address(),
                     amount: vec![Coin {
                         denom: "ubutt".to_string(),
@@ -1259,7 +1263,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![
                 snip20::register_receive_msg(
-                    env.contract_code_hash.clone(),
+                    mock_contract().contract_hash.clone(),
                     None,
                     BLOCK_SIZE,
                     mock_buttcoin().contract_hash,
@@ -1275,7 +1279,7 @@ mod tests {
                 )
                 .unwrap(),
                 snip20::register_receive_msg(
-                    env.contract_code_hash,
+                    mock_contract().contract_hash,
                     None,
                     BLOCK_SIZE,
                     mock_token().contract_hash,
