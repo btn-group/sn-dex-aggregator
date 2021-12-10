@@ -488,6 +488,10 @@ mod tests {
         Token::Native(mock_sscrt())
     }
 
+    fn mock_token_snip20() -> Token {
+        Token::Snip20(mock_sscrt())
+    }
+
     fn mock_user_address() -> HumanAddr {
         HumanAddr::from("gary")
     }
@@ -609,7 +613,7 @@ mod tests {
         let env = mock_env(
             mock_user_address(),
             &[Coin {
-                denom: "uatom".to_string(),
+                denom: "sscrt".to_string(),
                 amount: transaction_amount,
             }],
         );
@@ -624,7 +628,7 @@ mod tests {
             from: mock_user_address(),
             msg: Some(
                 to_binary(&Route {
-                    hops: VecDeque::new(),
+                    hops: hops.clone(),
                     to: mock_user_address(),
                     estimated_amount: estimated_amount,
                     minimum_acceptable_amount: minimum_acceptable_amount,
@@ -644,8 +648,8 @@ mod tests {
         // = when the from_token for the first hop is a native token
         // == when the amount specified does match the amount sent in
         hops.push_back(Hop {
-            from_token: mock_token_native(),
-            smart_contract: Some(mock_pair_contract()),
+            from_token: mock_token_snip20(),
+            smart_contract: Some(mock_pair_contract_two()),
         });
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
@@ -756,11 +760,11 @@ mod tests {
         // = when the from_token for the first hop is a snip20
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
+            from_token: mock_token_snip20(),
             smart_contract: Some(mock_pair_contract()),
         });
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_butt_lode()),
+            from_token: mock_token_snip20(),
             smart_contract: Some(mock_pair_contract()),
         });
         // == when the to does not match the from
@@ -777,11 +781,7 @@ mod tests {
             ),
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_butt_lode().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -803,12 +803,8 @@ mod tests {
             ),
             amount: transaction_amount,
         };
-        let handle_result_unwrapped = handle(
-            &mut deps,
-            mock_env(mock_butt_lode().address, &[]),
-            handle_msg,
-        )
-        .unwrap();
+        let handle_result_unwrapped =
+            handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg).unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
             vec![
@@ -824,8 +820,8 @@ mod tests {
                     ),
                     None,
                     BLOCK_SIZE,
-                    mock_butt_lode().contract_hash,
-                    mock_butt_lode().address,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
