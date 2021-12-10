@@ -448,6 +448,10 @@ mod tests {
         }
     }
 
+    fn mock_contract_address() -> HumanAddr {
+        mock_env(mock_user_address(), &[]).contract.address
+    }
+
     fn mock_contract_initiator_address() -> HumanAddr {
         HumanAddr::from("btn.group")
     }
@@ -535,7 +539,7 @@ mod tests {
         let handle_msg = HandleMsg::FinalizeRoute {};
         let handle_result = handle(
             &mut deps,
-            mock_env(env.contract.address.clone(), &[]),
+            mock_env(mock_contract_address(), &[]),
             handle_msg,
         );
         assert_eq!(
@@ -574,7 +578,7 @@ mod tests {
         let handle_msg = HandleMsg::FinalizeRoute {};
         handle(
             &mut deps,
-            mock_env(env.contract.address.clone(), &[]),
+            mock_env(mock_contract_address(), &[]),
             handle_msg,
         )
         .unwrap();
@@ -718,7 +722,7 @@ mod tests {
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
-                            to: Some(env.contract.address.clone()),
+                            to: Some(mock_contract_address()),
                         })
                         .unwrap()
                     ),
@@ -729,7 +733,7 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: env.contract.address.clone(),
+                    contract_addr: mock_contract_address(),
                     callback_code_hash: env.contract_code_hash.clone(),
                     msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
                     send: vec![],
@@ -801,7 +805,7 @@ mod tests {
                     Some(
                         to_binary(&Snip20Swap::Swap {
                             expected_return: None,
-                            to: Some(env.contract.address.clone()),
+                            to: Some(mock_contract_address()),
                         })
                         .unwrap()
                     ),
@@ -812,7 +816,7 @@ mod tests {
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: env.contract.address.clone(),
+                    contract_addr: mock_contract_address(),
                     callback_code_hash: env.contract_code_hash.clone(),
                     msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
                     send: vec![],
@@ -1011,7 +1015,7 @@ mod tests {
                 Some(
                     to_binary(&Snip20Swap::Swap {
                         expected_return: None,
-                        to: Some(env.contract.address.clone()),
+                        to: Some(mock_contract_address()),
                     })
                     .unwrap()
                 ),
