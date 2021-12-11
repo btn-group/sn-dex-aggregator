@@ -32,9 +32,6 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Snip20Swap {
-    Deposit {
-        padding: Option<String>,
-    },
     Swap {
         expected_return: Option<Uint128>,
         to: Option<HumanAddr>,
