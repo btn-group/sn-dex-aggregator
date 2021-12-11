@@ -16,6 +16,7 @@ pub struct Config {
 pub struct Hop {
     pub from_token: Token,
     pub smart_contract: Option<SecretContract>,
+    pub redeem_denom: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
