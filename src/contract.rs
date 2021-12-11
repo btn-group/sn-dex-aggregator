@@ -226,6 +226,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 Some(Hop {
                     from_token: _,
                     smart_contract,
+                    ..
                 }) => smart_contract.unwrap().address == from,
                 None => false,
             };
@@ -266,8 +267,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     amount = estimated_amount
                 }
                 if next_hop.smart_contract.is_some() {
+                    let denom: String = next_hop.redeem_denom.unwrap();
                     let smart_contract: SecretContract = next_hop.smart_contract.unwrap();
-                    let denom: String = query_crypto_denom(deps, smart_contract.clone())?;
                     msgs.push(snip20::redeem_msg(
                         amount,
                         Some(denom.clone()),
@@ -354,25 +355,6 @@ fn finalize_route<S: Storage, A: Api, Q: Querier>(
             Ok(HandleResponse::default())
         }
         None => Err(StdError::generic_err("no route to finalize")),
-    }
-}
-
-fn query_crypto_denom<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    token: SecretContract,
-) -> StdResult<String> {
-    if token.address == HumanAddr::from("mock-sscrt-address")
-        || token.address == HumanAddr::from("mock-buttcoin-address")
-    {
-        Ok("ubutt".to_string())
-    } else {
-        let exchange_rate = snip20::exchange_rate_query(
-            &deps.querier,
-            BLOCK_SIZE,
-            token.contract_hash,
-            token.address,
-        )?;
-        Ok(exchange_rate.denom)
     }
 }
 
@@ -532,11 +514,13 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
         });
         let route_state: RouteState = RouteState {
             current_hop: Some(Hop {
                 from_token: mock_token_native(),
+                redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
             }),
             remaining_route: Route {
@@ -574,6 +558,7 @@ mod tests {
         let route_state: RouteState = RouteState {
             current_hop: Some(Hop {
                 from_token: mock_token_native(),
+                redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
             }),
             remaining_route: Route {
@@ -628,6 +613,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
         });
         let handle_msg = HandleMsg::Receive {
@@ -655,6 +641,7 @@ mod tests {
         // == when the amount specified does match the amount sent in
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract_two()),
         });
         let handle_msg = HandleMsg::Receive {
@@ -767,10 +754,12 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
         });
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
         });
         // == when the to does not match the from
@@ -843,6 +832,7 @@ mod tests {
     #[test]
     fn test_handle_hop() {
         let (_init_result, mut deps) = init_helper();
+        let denom: String = "uscrt".to_string();
         let minimum_acceptable_amount: Uint128 = Uint128(1_000_000);
         let estimated_amount: Uint128 = Uint128(10_000_000);
         let transaction_amount: Uint128 = minimum_acceptable_amount;
@@ -882,6 +872,7 @@ mod tests {
         // = when expected token is a native token
         hops.push_back(Hop {
             from_token: mock_token_native(),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract()),
         });
         store_route_state(
@@ -889,6 +880,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
+                    redeem_denom: None,
                     smart_contract: Some(mock_buttcoin()),
                 }),
                 remaining_route: Route {
@@ -919,10 +911,12 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract_two()),
         });
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract_two()),
         });
         store_route_state(
@@ -930,6 +924,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
@@ -1001,6 +996,7 @@ mod tests {
             route_state.current_hop.unwrap(),
             Hop {
                 from_token: mock_token_snip20(),
+                redeem_denom: Some(denom.clone()),
                 smart_contract: Some(mock_pair_contract_two()),
             }
         );
@@ -1032,6 +1028,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: None,
             smart_contract: None,
         });
         store_route_state(
@@ -1039,6 +1036,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
@@ -1074,6 +1072,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_buttcoin()),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_buttcoin()),
         });
         store_route_state(
@@ -1081,6 +1080,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                 }),
                 remaining_route: Route {
@@ -1121,7 +1121,7 @@ mod tests {
                 .unwrap(),
                 snip20::redeem_msg(
                     estimated_amount,
-                    Some("ubutt".to_string()),
+                    Some(denom.clone()),
                     None,
                     BLOCK_SIZE,
                     mock_buttcoin().contract_hash,
@@ -1132,7 +1132,7 @@ mod tests {
                     from_address: mock_contract().address,
                     to_address: mock_user_address(),
                     amount: vec![Coin {
-                        denom: "ubutt".to_string(),
+                        denom: denom,
                         amount: estimated_amount
                     }],
                 })
@@ -1142,6 +1142,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
+            redeem_denom: None,
             smart_contract: None,
         });
         store_route_state(
@@ -1149,6 +1150,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract_two()),
                 }),
                 remaining_route: Route {
