@@ -21,6 +21,11 @@ pub enum HandleMsg {
     RegisterTokens {
         tokens: Vec<SecretContract>,
     },
+    RescueTokens {
+        amount: Uint128,
+        denom: Option<String>,
+        token: Option<SecretContract>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

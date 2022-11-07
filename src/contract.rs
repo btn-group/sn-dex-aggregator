@@ -51,6 +51,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         } => handle_hop(deps, &env, from, amount),
         HandleMsg::FinalizeRoute {} => finalize_route(deps, &env),
         HandleMsg::RegisterTokens { tokens } => register_tokens(&env, tokens),
+        HandleMsg::RescueTokens {
+            amount,
+            denom,
+            token,
+        } => rescue_tokens(deps, &env, amount, denom, token),
     }
 }
 
@@ -371,6 +376,47 @@ fn register_tokens(env: &Env, tokens: Vec<SecretContract>) -> StdResult<HandleRe
             contract_hash.clone(),
             address.clone(),
         )?);
+    }
+
+    Ok(HandleResponse {
+        messages,
+        log: vec![],
+        data: None,
+    })
+}
+
+fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+    amount: Uint128,
+    denom: Option<String>,
+    token: Option<SecretContract>,
+) -> StdResult<HandleResponse> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
+    authorize(config.initiator.clone(), env.message.sender.clone())?;
+
+    let mut messages: Vec<CosmosMsg> = vec![];
+    if let Some(denom_unwrapped) = denom {
+        let withdrawal_coin: Vec<Coin> = vec![Coin {
+            amount,
+            denom: denom_unwrapped,
+        }];
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            from_address: env.contract.address.clone(),
+            to_address: config.initiator.clone(),
+            amount: withdrawal_coin,
+        }));
+    }
+
+    if let Some(token_unwrapped) = token {
+        messages.push(snip20::transfer_msg(
+            config.initiator,
+            amount,
+            None,
+            BLOCK_SIZE,
+            token_unwrapped.contract_hash,
+            token_unwrapped.address,
+        )?)
     }
 
     Ok(HandleResponse {
@@ -1223,6 +1269,75 @@ mod tests {
                 )
                 .unwrap(),
             ]
+        );
+    }
+
+    #[test]
+    fn test_rescue_tokens() {
+        let (_init_result, mut deps) = init_helper();
+        let denom: String = "uscrt".to_string();
+        let amount: Uint128 = Uint128(5);
+        let mut handle_msg = HandleMsg::RescueTokens {
+            amount,
+            denom: Some(denom.clone()),
+            token: Some(mock_buttcoin()),
+        };
+        // = when called by a non-admin
+        // = * it raises an Unauthorized error
+        let mut env: Env = mock_env(mock_user_address(), &[]);
+        let handle_result = handle(&mut deps, env, handle_msg.clone());
+        assert_eq!(
+            handle_result.unwrap_err(),
+            StdError::Unauthorized { backtrace: None }
+        );
+
+        // = when called by the admin
+        env = mock_env(mock_contract_initiator_address(), &[]);
+        // == when only denom is specified
+        handle_msg = HandleMsg::RescueTokens {
+            amount,
+            denom: Some(denom.clone()),
+            token: None,
+        };
+        // === * it sends the amount specified of the coin of the denom to the admin
+        let handle_result = handle(&mut deps, env.clone(), handle_msg.clone());
+        let handle_result_unwrapped = handle_result.unwrap();
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![CosmosMsg::Bank(BankMsg::Send {
+                from_address: env.contract.address,
+                to_address: mock_contract_initiator_address(),
+                amount: vec![Coin {
+                    denom: denom,
+                    amount
+                }],
+            })]
+        );
+
+        // == when only token is specified
+        handle_msg = HandleMsg::RescueTokens {
+            amount,
+            denom: None,
+            token: Some(mock_buttcoin()),
+        };
+        // == * it sends the amount specified of the token to the admin
+        let handle_result = handle(
+            &mut deps,
+            mock_env(mock_contract_initiator_address(), &[]),
+            handle_msg.clone(),
+        );
+        let handle_result_unwrapped = handle_result.unwrap();
+        assert_eq!(
+            handle_result_unwrapped.messages,
+            vec![snip20::transfer_msg(
+                mock_contract_initiator_address(),
+                amount,
+                None,
+                BLOCK_SIZE,
+                mock_buttcoin().contract_hash,
+                mock_buttcoin().address,
+            )
+            .unwrap()]
         );
     }
 }
