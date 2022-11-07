@@ -67,6 +67,41 @@
           }
         }
       }
+    },
+    {
+      "type": "object",
+      "required": [
+        "rescue_tokens"
+      ],
+      "properties": {
+        "rescue_tokens": {
+          "type": "object",
+          "required": [
+            "amount"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "denom": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SecretContract"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
     }
   ],
   "definitions": {
