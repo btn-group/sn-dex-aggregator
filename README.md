@@ -1,4 +1,4 @@
-# Secret network DEX aggregator V1
+# Secret network DEX aggregator V3
 
 ## How it works
 * User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems), the minimum acceptable amount and the estimated amount.
