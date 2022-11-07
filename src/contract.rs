@@ -284,9 +284,10 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         amount: withdrawal_coins,
                     }));
                 } else {
-                    msgs.push(snip20::transfer_msg(
+                    msgs.push(snip20::send_msg(
                         to.clone(),
                         amount,
+                        None,
                         None,
                         BLOCK_SIZE,
                         from_token_code_hash,
@@ -1051,9 +1052,10 @@ mod tests {
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
-            vec![snip20::transfer_msg(
+            vec![snip20::send_msg(
                 mock_user_address(),
                 transaction_amount,
+                None,
                 None,
                 BLOCK_SIZE,
                 mock_sscrt().contract_hash,
@@ -1175,9 +1177,10 @@ mod tests {
                     mock_sscrt().address,
                 )
                 .unwrap(),
-                snip20::transfer_msg(
+                snip20::send_msg(
                     mock_user_address(),
                     estimated_amount,
+                    None,
                     None,
                     BLOCK_SIZE,
                     mock_sscrt().contract_hash,
