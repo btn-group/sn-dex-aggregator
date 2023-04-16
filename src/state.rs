@@ -17,6 +17,8 @@ pub struct Hop {
     pub from_token: Token,
     pub smart_contract: Option<SecretContract>,
     pub redeem_denom: Option<String>,
+    pub migrate_to_token: Option<SecretContract>,
+    pub shade_protocol_router_path: Option<Vec<SecretContractForShadeProtocol>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -37,6 +39,12 @@ pub struct RouteState {
 pub struct SecretContract {
     pub address: HumanAddr,
     pub contract_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, JsonSchema)]
+pub struct SecretContractForShadeProtocol {
+    pub addr: String,
+    pub code_hash: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
