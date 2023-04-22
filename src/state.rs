@@ -16,7 +16,7 @@ pub struct Config {
 pub struct Hop {
     pub from_token: Token,
     pub smart_contract: Option<SecretContract>,
-    pub denom: Option<String>,
+    pub redeem_denom: Option<String>,
     pub migrate_to_token: Option<SecretContract>,
     pub shade_protocol_router_path: Option<Vec<SecretContractForShadeProtocol>>,
 }

@@ -321,7 +321,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     amount = estimated_amount
                 }
                 if next_hop.smart_contract.is_some() {
-                    let denom: String = next_hop.denom.unwrap();
+                    let denom: String = next_hop.redeem_denom.unwrap();
                     let smart_contract: SecretContract = next_hop.smart_contract.unwrap();
                     msgs.push(snip20::redeem_msg(
                         amount,
@@ -653,7 +653,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -661,7 +661,7 @@ mod tests {
         let route_state: RouteState = RouteState {
             current_hop: Some(Hop {
                 from_token: mock_token_native(),
-                denom: None,
+                redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
@@ -701,7 +701,7 @@ mod tests {
         let route_state: RouteState = RouteState {
             current_hop: Some(Hop {
                 from_token: mock_token_native(),
-                denom: None,
+                redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
@@ -758,7 +758,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -788,7 +788,7 @@ mod tests {
         // == when the amount specified does match the amount sent in
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract_two()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -903,14 +903,14 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1025,7 +1025,7 @@ mod tests {
         // = when expected token is a native token
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            denom: Some(denom.clone()),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1035,7 +1035,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    denom: None,
+                    redeem_denom: None,
                     smart_contract: Some(mock_buttcoin()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1068,14 +1068,14 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: Some(denom.clone()),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract_two()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: Some(denom.clone()),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_pair_contract_two()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1085,7 +1085,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    denom: None,
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1159,7 +1159,7 @@ mod tests {
             route_state.current_hop.unwrap(),
             Hop {
                 from_token: mock_token_snip20(),
-                denom: Some(denom.clone()),
+                redeem_denom: Some(denom.clone()),
                 smart_contract: Some(mock_pair_contract_two()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
@@ -1193,7 +1193,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: None,
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1203,7 +1203,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    denom: None,
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1242,7 +1242,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_buttcoin()),
-            denom: Some(denom.clone()),
+            redeem_denom: Some(denom.clone()),
             smart_contract: Some(mock_buttcoin()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1252,7 +1252,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    denom: None,
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1316,7 +1316,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            denom: None,
+            redeem_denom: None,
             smart_contract: None,
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1326,7 +1326,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    denom: None,
+                    redeem_denom: None,
                     smart_contract: Some(mock_pair_contract_two()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
