@@ -1,4 +1,4 @@
-# Secret network DEX aggregator V3
+# Secret network DEX aggregator V4
 
 ## How it works
 * User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems), the minimum acceptable amount and the estimated amount.
@@ -31,7 +31,7 @@ docker exec -it secretdev /bin/bash
 cd code
 
 # Store contracts required for test
-secretcli tx compute store buttcoin.wasm.gz --from a --gas 3000000 -y --keyring-backend test
+secretcli tx compute store button.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store butt-lode.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store secretswap-factory.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store secretswap-pair.wasm.gz --from a --gas 3000000 -y --keyring-backend test
@@ -42,12 +42,12 @@ secretcli tx compute store sn-dex-aggregator.wasm.gz --from a --gas 3000000 -y -
 # Get the contract's id
 secretcli query compute list-code
 
-# Init Buttcoin
+# Init Button
 CODE_ID=1
-INIT='{"name": "Buttcoin", "symbol": "BUTT", "decimals": 6, "initial_balances": [{"address": "secret1pl2r32z9n3e47950s6ej7mg7pfh7mxd003guum", "amount": "1000000000000000000"},{"address": "secret1jk7z6dhn9te3jh9d5sxcm8zu087zkz3tpxtmfe", "amount": "1000000000000000000"}], "prng_seed": "testing"}'
-secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "Buttcoin" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
+INIT='{"name": "Button", "symbol": "BUTT", "decimals": 6, "initial_balances": [{"address": "secret1pl2r32z9n3e47950s6ej7mg7pfh7mxd003guum", "amount": "1000000000000000000"},{"address": "secret1jk7z6dhn9te3jh9d5sxcm8zu087zkz3tpxtmfe", "amount": "1000000000000000000"}], "prng_seed": "testing"}'
+secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "Button" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
 
-# Set viewing key for Buttcoin
+# Set viewing key for Button
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"set_viewing_key": { "key": "testing" }}' --from a -y --keyring-backend test
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"set_viewing_key": { "key": "testing" }}' --from b -y --keyring-backend test
 
@@ -82,7 +82,7 @@ secretcli tx compute execute secret1my3jvl6zs2n27648zngqrtw8pd23nrkrh0f7ax '{"pr
 
 # Init DEX aggregator
 CODE_ID=7
-INIT='{ "buttcoin": {"address": "secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg", "contract_hash": "4CD7F64B9ADE65200E595216265932A0C7689C4804BE7B4A5F8CEBED250BF7EA"}, "butt_lode": {"address": "secret10pyejy66429refv3g35g2t7am0was7ya6hvrzf", "contract_hash": "99F94EDC0D744B35A8FBCBDC8FB71C140CFA8F3F91FAD8C35B7CC37862A4AC95"} }'
+INIT='{ "button": {"address": "secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg", "contract_hash": "4CD7F64B9ADE65200E595216265932A0C7689C4804BE7B4A5F8CEBED250BF7EA"}, "butt_lode": {"address": "secret10pyejy66429refv3g35g2t7am0was7ya6hvrzf", "contract_hash": "99F94EDC0D744B35A8FBCBDC8FB71C140CFA8F3F91FAD8C35B7CC37862A4AC95"} }'
 secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "DEX aggregator 2 | btn.group" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
 
 # Query config

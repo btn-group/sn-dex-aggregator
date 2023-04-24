@@ -4,13 +4,13 @@
   "type": "object",
   "required": [
     "butt_lode",
-    "buttcoin"
+    "button"
   ],
   "properties": {
     "butt_lode": {
       "$ref": "#/definitions/SecretContract"
     },
-    "buttcoin": {
+    "button": {
       "$ref": "#/definitions/SecretContract"
     }
   },

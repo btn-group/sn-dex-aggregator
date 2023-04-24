@@ -21,7 +21,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
-        buttcoin: msg.buttcoin,
+        button: msg.button,
         butt_lode: msg.butt_lode,
         initiator: env.message.sender,
     };
@@ -305,7 +305,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 }
                 // Send fee to appropriate person
                 if amount > estimated_amount {
-                    let fee_recipient = if from_token_address == config.buttcoin.address {
+                    let fee_recipient = if from_token_address == config.button.address {
                         config.butt_lode.address
                     } else {
                         config.initiator
@@ -544,16 +544,16 @@ mod tests {
         let env = mock_env(mock_contract_initiator_address(), &[]);
         let mut deps = mock_dependencies(20, &[]);
         let msg = InitMsg {
-            buttcoin: mock_buttcoin(),
+            button: mock_button(),
             butt_lode: mock_butt_lode(),
         };
         (init(&mut deps, env, msg), deps)
     }
 
-    fn mock_buttcoin() -> SecretContract {
+    fn mock_button() -> SecretContract {
         SecretContract {
-            address: HumanAddr::from("mock-buttcoin-address"),
-            contract_hash: "mock-buttcoin-contract-hash".to_string(),
+            address: HumanAddr::from("mock-button-address"),
+            contract_hash: "mock-button-contract-hash".to_string(),
         }
     }
 
@@ -1010,11 +1010,7 @@ mod tests {
             msg: None,
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
@@ -1036,7 +1032,7 @@ mod tests {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
                     redeem_denom: None,
-                    smart_contract: Some(mock_buttcoin()),
+                    smart_contract: Some(mock_button()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
                 }),
@@ -1055,11 +1051,7 @@ mod tests {
             msg: None,
             amount: transaction_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
         assert_eq!(
             handle_result.unwrap_err(),
             StdError::generic_err("Native tokens can only be the input or output tokens.")
@@ -1241,9 +1233,9 @@ mod tests {
         // ======= when the current hop has a smart contract associated with it
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
-            from_token: Token::Snip20(mock_buttcoin()),
+            from_token: Token::Snip20(mock_button()),
             redeem_denom: Some(denom.clone()),
-            smart_contract: Some(mock_buttcoin()),
+            smart_contract: Some(mock_button()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
@@ -1274,11 +1266,7 @@ mod tests {
             msg: None,
             amount: estimated_amount + estimated_amount,
         };
-        let handle_result = handle(
-            &mut deps,
-            mock_env(mock_buttcoin().address, &[]),
-            handle_msg,
-        );
+        let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
         // ======= * it transfers positive slippage to BUTT lode
         assert_eq!(
@@ -1289,8 +1277,8 @@ mod tests {
                     estimated_amount,
                     None,
                     BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address,
+                    mock_button().contract_hash,
+                    mock_button().address,
                 )
                 .unwrap(),
                 snip20::redeem_msg(
@@ -1298,8 +1286,8 @@ mod tests {
                     Some(denom.clone()),
                     None,
                     BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address,
+                    mock_button().contract_hash,
+                    mock_button().address,
                 )
                 .unwrap(),
                 CosmosMsg::Bank(BankMsg::Send {
@@ -1381,7 +1369,7 @@ mod tests {
 
         // When tokens are in the parameter
         let handle_msg = HandleMsg::RegisterTokens {
-            tokens: vec![mock_buttcoin(), mock_token()],
+            tokens: vec![mock_button(), mock_token()],
         };
         let handle_result = handle(&mut deps, env.clone(), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
@@ -1393,8 +1381,8 @@ mod tests {
                     mock_contract().contract_hash.clone(),
                     None,
                     BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address,
+                    mock_button().contract_hash,
+                    mock_button().address,
                 )
                 .unwrap(),
                 snip20::register_receive_msg(
@@ -1417,7 +1405,7 @@ mod tests {
         let mut handle_msg = HandleMsg::RescueTokens {
             amount,
             denom: Some(denom.clone()),
-            token: Some(mock_buttcoin()),
+            token: Some(mock_button()),
         };
         // = when called by a non-admin
         // = * it raises an Unauthorized error
@@ -1455,7 +1443,7 @@ mod tests {
         handle_msg = HandleMsg::RescueTokens {
             amount,
             denom: None,
-            token: Some(mock_buttcoin()),
+            token: Some(mock_button()),
         };
         // == * it sends the amount specified of the token to the admin
         let handle_result = handle(
@@ -1471,8 +1459,8 @@ mod tests {
                 amount,
                 None,
                 BLOCK_SIZE,
-                mock_buttcoin().contract_hash,
-                mock_buttcoin().address,
+                mock_button().contract_hash,
+                mock_button().address,
             )
             .unwrap()]
         );

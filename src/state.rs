@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
-    pub buttcoin: SecretContract,
+    pub button: SecretContract,
     pub butt_lode: SecretContract,
     pub initiator: HumanAddr,
 }
