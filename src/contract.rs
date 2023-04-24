@@ -59,6 +59,126 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     }
 }
 
+// CONTNUE WITH THIS SO THAT WE CAN USE THIS ON
+fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg>> {
+    let mut msgs: Vec<CosmosMsg> = vec![];
+    match hop.from_token {
+        // first hop is a snip20
+        Token::Snip20(SecretContract {
+            address,
+            contract_hash,
+        }) => {
+            // I also need to be able to handle shade protocol swap code
+            if hop.shade_protocol_router_path.is_some() {
+                // Shade Protocol Router
+                // Just need the
+                msgs.push(snip20::send_msg(
+                    hop.smart_contract.unwrap().address,
+                    amount,
+                    // build swap msg for the next hop
+                    Some(to_binary(&ShadeProtocol::SwapTokensForExact {
+                        // set the recepient of the swap to be this contract (the router)
+                        path: hop.shade_protocol_router_path.unwrap(),
+                    })?),
+                    None,
+                    BLOCK_SIZE,
+                    contract_hash,
+                    address,
+                )?);
+            } else if hop.migrate_to_token.is_some() {
+                // Migration
+                // 1. Migrating
+                msgs.push(snip20::send_msg(
+                    hop.smart_contract.unwrap().address,
+                    amount,
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    contract_hash,
+                    address,
+                )?);
+                // 2. Continuing to next hop by sending the migrated token to self
+                msgs.push(snip20::send_msg(
+                    env.contract.address.clone(),
+                    amount,
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    hop.migrate_to_token.clone().unwrap().contract_hash,
+                    hop.migrate_to_token.unwrap().address,
+                )?);
+            } else if hop.redeem_denom.is_some() {
+                // Redeen denom
+                let denom: String = hop.redeem_denom.unwrap();
+                let smart_contract: SecretContract = hop.smart_contract.unwrap();
+                msgs.push(snip20::redeem_msg(
+                    amount,
+                    Some(denom.clone()),
+                    None,
+                    BLOCK_SIZE,
+                    smart_contract.contract_hash,
+                    smart_contract.address,
+                )?);
+                let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
+                msgs.push(CosmosMsg::Bank(BankMsg::Send {
+                    from_address: env.contract.address.clone(),
+                    to_address: env.contract.address.clone(),
+                    amount: withdrawal_coins,
+                }));
+            } else {
+                // Standard
+                msgs.push(snip20::send_msg(
+                    hop.smart_contract.unwrap().address,
+                    amount,
+                    // build swap msg for the next hop
+                    Some(to_binary(&Snip20Swap::Swap {
+                        // set expected_return to None because we don't care about slippage mid-route
+                        expected_return: None,
+                        // set the recepient of the swap to be this contract (the router)
+                        to: Some(env.contract.address.clone()),
+                    })?),
+                    None,
+                    BLOCK_SIZE,
+                    contract_hash,
+                    address,
+                )?);
+            }
+        }
+        Token::Native(SecretContract {
+            address,
+            contract_hash,
+        }) => {
+            // DEPOSIT MSG
+            msgs.push(Snip20::Deposit { padding: None }.to_cosmos_msg(
+                BLOCK_SIZE,
+                contract_hash.clone(),
+                address.clone(),
+                Some(Coin {
+                    amount,
+                    denom: hop.redeem_denom.unwrap(),
+                }),
+            )?);
+            msgs.push(snip20::send_msg(
+                hop.smart_contract.unwrap().address,
+                amount,
+                // build swap msg for the next hop
+                Some(to_binary(&Snip20Swap::Swap {
+                    // set expected_return to None because we don't care about slippage mid-route
+                    expected_return: None,
+                    // set the recepient of the swap to be this contract (the router)
+                    to: Some(env.contract.address.clone()),
+                })?),
+                None,
+                BLOCK_SIZE,
+                contract_hash,
+                address,
+            )?);
+        }
+    }
+
+    Ok(msgs)
+}
+
 fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
@@ -71,6 +191,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     // 2. send `amount` X to pair X/Y
     // 3. call FinalizeRoute to make sure everything went ok, otherwise revert the tx
 
+    // *** CHECKED
     let Route {
         mut hops,
         to,
@@ -78,6 +199,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         minimum_acceptable_amount,
     } = from_binary(&msg)?;
 
+    // *** CHECKED: SECOND HOP MUST EXIST AS LAST HOP CHECKS MIN ACCEPTABLE AMOUNT
     if hops.len() < 2 {
         return Err(StdError::generic_err("Route must be at least 2 hops."));
     }
@@ -113,105 +235,20 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         },
     )?;
 
-    let mut msgs = vec![];
-
+    let mut msgs = hop_messages(first_hop.clone(), amount, &env)?;
     match first_hop.from_token {
         // first hop is a snip20
         Token::Snip20(SecretContract {
-            address,
-            contract_hash,
+            address: _,
+            contract_hash: _,
         }) => {
             authorize(from, to)?;
-
-            // I also need to be able to handle shade protocol swap code
-            if first_hop.shade_protocol_router_path.is_some() {
-                // Shade Protocol Router
-                // Just need the
-                msgs.push(snip20::send_msg(
-                    first_hop.smart_contract.unwrap().address,
-                    amount,
-                    // build swap msg for the next hop
-                    Some(to_binary(&ShadeProtocol::SwapTokensForExact {
-                        // set the recepient of the swap to be this contract (the router)
-                        path: first_hop.shade_protocol_router_path.unwrap(),
-                    })?),
-                    None,
-                    BLOCK_SIZE,
-                    contract_hash,
-                    address,
-                )?);
-            } else if first_hop.migrate_to_token.is_some() {
-                // Migration
-                // 1. Migrating
-                msgs.push(snip20::send_msg(
-                    first_hop.smart_contract.unwrap().address,
-                    amount,
-                    None,
-                    None,
-                    BLOCK_SIZE,
-                    contract_hash,
-                    address,
-                )?);
-                // 2. Continuing to next hop by sending the migrated token to self
-                msgs.push(snip20::send_msg(
-                    env.contract.address.clone(),
-                    amount,
-                    None,
-                    None,
-                    BLOCK_SIZE,
-                    first_hop.migrate_to_token.clone().unwrap().contract_hash,
-                    first_hop.migrate_to_token.unwrap().address,
-                )?);
-            } else {
-                // Standard
-                msgs.push(snip20::send_msg(
-                    first_hop.smart_contract.unwrap().address,
-                    amount,
-                    // build swap msg for the next hop
-                    Some(to_binary(&Snip20Swap::Swap {
-                        // set expected_return to None because we don't care about slippage mid-route
-                        expected_return: None,
-                        // set the recepient of the swap to be this contract (the router)
-                        to: Some(env.contract.address.clone()),
-                    })?),
-                    None,
-                    BLOCK_SIZE,
-                    contract_hash,
-                    address,
-                )?);
-            }
         }
         Token::Native(SecretContract {
-            address,
-            contract_hash,
+            address: _,
+            contract_hash: _,
         }) => {
             authorize(env.message.sender.clone(), to)?;
-
-            // DEPOSIT MSG
-            msgs.push(Snip20::Deposit { padding: None }.to_cosmos_msg(
-                BLOCK_SIZE,
-                contract_hash.clone(),
-                address.clone(),
-                Some(Coin {
-                    amount,
-                    denom: first_hop.redeem_denom.unwrap(),
-                }),
-            )?);
-            msgs.push(snip20::send_msg(
-                first_hop.smart_contract.unwrap().address,
-                amount,
-                // build swap msg for the next hop
-                Some(to_binary(&Snip20Swap::Swap {
-                    // set expected_return to None because we don't care about slippage mid-route
-                    expected_return: None,
-                    // set the recepient of the swap to be this contract (the router)
-                    to: Some(env.contract.address.clone()),
-                })?),
-                None,
-                BLOCK_SIZE,
-                contract_hash,
-                address,
-            )?);
         }
     }
 
@@ -294,7 +331,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 ));
             }
 
-            let mut msgs = vec![];
+            let mut messages = vec![];
             let current_hop = Some(next_hop.clone());
             if hops.is_empty() {
                 // last hop
@@ -313,7 +350,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     } else {
                         config.initiator
                     };
-                    msgs.push(snip20::transfer_msg(
+                    messages.push(snip20::transfer_msg(
                         fee_recipient,
                         (amount - estimated_amount).unwrap(),
                         None,
@@ -326,7 +363,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 if next_hop.smart_contract.is_some() {
                     let denom: String = next_hop.redeem_denom.unwrap();
                     let smart_contract: SecretContract = next_hop.smart_contract.unwrap();
-                    msgs.push(snip20::redeem_msg(
+                    messages.push(snip20::redeem_msg(
                         amount,
                         Some(denom.clone()),
                         None,
@@ -335,13 +372,13 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                         smart_contract.address,
                     )?);
                     let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
-                    msgs.push(CosmosMsg::Bank(BankMsg::Send {
+                    messages.push(CosmosMsg::Bank(BankMsg::Send {
                         from_address: env.contract.address.clone(),
                         to_address: to.clone(),
                         amount: withdrawal_coins,
                     }));
                 } else {
-                    msgs.push(snip20::send_msg(
+                    messages.push(snip20::send_msg(
                         to.clone(),
                         amount,
                         None,
@@ -352,64 +389,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     )?);
                 }
             } else {
-                // not last hop
-
-                // I also need to be able to handle shade protocol swap code
-                // HERE
-                if next_hop.shade_protocol_router_path.is_some() {
-                    // Shade Protocol Router
-                    // Just need the
-                    msgs.push(snip20::send_msg(
-                        next_hop.smart_contract.unwrap().address,
-                        amount,
-                        // build swap msg for the next hop
-                        Some(to_binary(&ShadeProtocol::SwapTokensForExact {
-                            // set the recepient of the swap to be this contract (the router)
-                            path: next_hop.shade_protocol_router_path.unwrap(),
-                        })?),
-                        None,
-                        BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
-                    )?);
-                } else if next_hop.migrate_to_token.is_some() {
-                    // Migration
-                    // 1. Migrating
-                    msgs.push(snip20::send_msg(
-                        next_hop.smart_contract.unwrap().address,
-                        amount,
-                        None,
-                        None,
-                        BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
-                    )?);
-                    // 2. Continuing to next hop by sending the migrated token to self
-                    msgs.push(snip20::send_msg(
-                        env.contract.address.clone(),
-                        amount,
-                        None,
-                        None,
-                        BLOCK_SIZE,
-                        next_hop.migrate_to_token.clone().unwrap().contract_hash,
-                        next_hop.migrate_to_token.unwrap().address,
-                    )?);
-                } else {
-                    // 1. set expected_return to None because we don't care about slippage mid-route
-                    // 2. set the recipient of the swap to be this contract (the router)
-                    msgs.push(snip20::send_msg(
-                        next_hop.smart_contract.unwrap().address,
-                        amount,
-                        Some(to_binary(&Snip20Swap::Swap {
-                            expected_return: None,
-                            to: Some(env.contract.address.clone()),
-                        })?),
-                        None,
-                        BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
-                    )?);
-                }
+                messages = hop_messages(current_hop.clone().unwrap(), amount, &env)?;
             }
             store_route_state(
                 &mut deps.storage,
@@ -425,7 +405,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             )?;
 
             Ok(HandleResponse {
-                messages: msgs,
+                messages,
                 log: vec![],
                 data: None,
             })
@@ -1132,24 +1112,30 @@ mod tests {
         };
         let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
+
+        // Redeen denom
         assert_eq!(
             handle_result_unwrapped.messages,
-            vec![snip20::send_msg(
-                mock_pair_contract_two().address,
-                transaction_amount,
-                Some(
-                    to_binary(&Snip20Swap::Swap {
-                        expected_return: None,
-                        to: Some(mock_contract().address),
-                    })
-                    .unwrap()
-                ),
-                None,
-                BLOCK_SIZE,
-                mock_sscrt().contract_hash,
-                mock_sscrt().address,
-            )
-            .unwrap()]
+            vec![
+                snip20::redeem_msg(
+                    transaction_amount,
+                    Some(denom.clone()),
+                    None,
+                    BLOCK_SIZE,
+                    mock_pair_contract_two().contract_hash,
+                    mock_pair_contract_two().address
+                )
+                .unwrap(),
+                CosmosMsg::Bank(BankMsg::Send {
+                    from_address: mock_contract().address.clone(),
+                    to_address: mock_contract().address.clone(),
+                    amount: [Coin {
+                        amount: transaction_amount,
+                        denom: denom.clone()
+                    }]
+                    .to_vec(),
+                })
+            ]
         );
         // ==== * it stores the updated route state
         let route_state = read_route_state(&deps.storage).unwrap().unwrap();
