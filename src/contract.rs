@@ -1,7 +1,7 @@
 use crate::authorize::authorize;
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
-    msg::{HandleMsg, InitMsg, QueryMsg, ShadeProtocol, Snip20Swap},
+    msg::{HandleMsg, InitMsg, QueryMsg, ShadeProtocol, Snip20, Snip20Swap},
     state::{
         delete_route_state, read_route_state, store_route_state, Config, Hop, Route, RouteState,
         SecretContract, Token,
@@ -187,12 +187,15 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         }) => {
             authorize(env.message.sender.clone(), to)?;
 
-            msgs.push(snip20::deposit_msg(
-                amount,
-                None,
+            // DEPOSIT MSG
+            msgs.push(Snip20::Deposit { padding: None }.to_cosmos_msg(
                 BLOCK_SIZE,
                 contract_hash.clone(),
                 address.clone(),
+                Some(Coin {
+                    amount,
+                    denom: first_hop.redeem_denom.unwrap(),
+                }),
             )?);
             msgs.push(snip20::send_msg(
                 first_hop.smart_contract.unwrap().address,
@@ -758,7 +761,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            redeem_denom: None,
+            redeem_denom: Some("some_denom".to_string()),
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -867,14 +870,17 @@ mod tests {
         assert_eq!(
             handle_result_unwrapped.messages,
             vec![
-                snip20::deposit_msg(
-                    transaction_amount,
-                    None,
-                    BLOCK_SIZE,
-                    mock_sscrt().contract_hash,
-                    mock_sscrt().address,
-                )
-                .unwrap(),
+                Snip20::Deposit { padding: None }
+                    .to_cosmos_msg(
+                        BLOCK_SIZE,
+                        mock_sscrt().contract_hash,
+                        mock_sscrt().address,
+                        Some(Coin {
+                            amount: transaction_amount,
+                            denom: "some_denom".to_string(),
+                        }),
+                    )
+                    .unwrap(),
                 snip20::send_msg(
                     mock_pair_contract().address,
                     transaction_amount,
