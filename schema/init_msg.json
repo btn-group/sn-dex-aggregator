@@ -1,37 +1,5 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "InitMsg",
-  "type": "object",
-  "required": [
-    "butt_lode",
-    "button"
-  ],
-  "properties": {
-    "butt_lode": {
-      "$ref": "#/definitions/SecretContract"
-    },
-    "button": {
-      "$ref": "#/definitions/SecretContract"
-    }
-  },
-  "definitions": {
-    "HumanAddr": {
-      "type": "string"
-    },
-    "SecretContract": {
-      "type": "object",
-      "required": [
-        "address",
-        "contract_hash"
-      ],
-      "properties": {
-        "address": {
-          "$ref": "#/definitions/HumanAddr"
-        },
-        "contract_hash": {
-          "type": "string"
-        }
-      }
-    }
-  }
+  "type": "object"
 }

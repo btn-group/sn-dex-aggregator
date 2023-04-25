@@ -17,13 +17,11 @@ use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: InitMsg,
+    _msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
-        button: msg.button,
-        butt_lode: msg.butt_lode,
-        initiator: env.message.sender,
+        admin: env.message.sender,
     };
     config_store.store(CONFIG_KEY, &config)?;
 
@@ -352,13 +350,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             address,
                             contract_hash,
                         }) => {
-                            let fee_recipient = if address == config.button.address {
-                                config.butt_lode.address
-                            } else {
-                                config.initiator
-                            };
                             messages.push(snip20::transfer_msg(
-                                fee_recipient,
+                                config.admin,
                                 excess,
                                 None,
                                 BLOCK_SIZE,
@@ -366,24 +359,21 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                                 address.clone(),
                             )?);
                         }
-                        Token::Native(_) => {
-                            let fee_recipient = config.initiator;
-                            match current_hop {
-                                Some(Hop {
-                                    ref redeem_denom, ..
-                                }) => {
-                                    messages.push(CosmosMsg::Bank(BankMsg::Send {
-                                        from_address: env.contract.address.clone(),
-                                        to_address: fee_recipient,
-                                        amount: vec![Coin {
-                                            amount: excess,
-                                            denom: redeem_denom.clone().unwrap(),
-                                        }],
-                                    }));
-                                }
-                                None => todo!(),
+                        Token::Native(_) => match current_hop {
+                            Some(Hop {
+                                ref redeem_denom, ..
+                            }) => {
+                                messages.push(CosmosMsg::Bank(BankMsg::Send {
+                                    from_address: env.contract.address.clone(),
+                                    to_address: config.admin,
+                                    amount: vec![Coin {
+                                        amount: excess,
+                                        denom: redeem_denom.clone().unwrap(),
+                                    }],
+                                }));
                             }
-                        }
+                            None => todo!(),
+                        },
                     };
                 }
                 // Send estimate amount to user
@@ -499,7 +489,7 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
     token: Option<SecretContract>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
-    authorize(config.initiator.clone(), env.message.sender.clone())?;
+    authorize(config.admin.clone(), env.message.sender.clone())?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     if let Some(denom_unwrapped) = denom {
@@ -509,14 +499,14 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
         }];
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             from_address: env.contract.address.clone(),
-            to_address: config.initiator.clone(),
+            to_address: config.admin.clone(),
             amount: withdrawal_coin,
         }));
     }
 
     if let Some(token_unwrapped) = token {
         messages.push(snip20::transfer_msg(
-            config.initiator,
+            config.admin,
             amount,
             None,
             BLOCK_SIZE,
@@ -557,10 +547,7 @@ mod tests {
     ) {
         let env = mock_env(mock_contract_initiator_address(), &[]);
         let mut deps = mock_dependencies(20, &[]);
-        let msg = InitMsg {
-            button: mock_button(),
-            butt_lode: mock_butt_lode(),
-        };
+        let msg = InitMsg {};
         (init(&mut deps, env, msg), deps)
     }
 
@@ -1284,40 +1271,6 @@ mod tests {
         .unwrap();
         // ===== when the amount is equal to or greater than the minimum_acceptable_amount
         // ====== when the amount is greater than the esimated amount
-        // ======= when the from token is BUTT
-        let handle_msg = HandleMsg::Receive {
-            from: mock_pair_contract().address,
-            msg: None,
-            amount: estimated_amount + estimated_amount,
-        };
-        let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
-        let handle_result_unwrapped = handle_result.unwrap();
-        // ======= * it transfers positive slippage to BUTT lode
-        assert_eq!(
-            handle_result_unwrapped.messages,
-            vec![
-                snip20::transfer_msg(
-                    mock_butt_lode().address,
-                    estimated_amount,
-                    None,
-                    BLOCK_SIZE,
-                    mock_button().contract_hash,
-                    mock_button().address,
-                )
-                .unwrap(),
-                snip20::send_msg(
-                    mock_user_address(),
-                    estimated_amount,
-                    None,
-                    None,
-                    BLOCK_SIZE,
-                    mock_button().contract_hash,
-                    mock_button().address,
-                )
-                .unwrap()
-            ]
-        );
-        // ======= when the from token is not BUTT
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
