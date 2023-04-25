@@ -227,6 +227,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         }
     }
 
+    // *** CHECKED
     store_route_state(
         &mut deps.storage,
         &RouteState {
@@ -240,8 +241,8 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         },
     )?;
 
-    let mut msgs = hop_messages(first_hop.clone(), amount, &env)?;
-
+    // *** CHECKED
+    let mut msgs = hop_messages(first_hop, amount, &env)?;
     msgs.push(
         // finalize the route at the end, to make sure the route was completed successfully
         CosmosMsg::Wasm(WasmMsg::Execute {
@@ -294,42 +295,43 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             // *** CHECKED
             validate_received_token(next_hop.from_token.clone(), amount, env)?;
 
-            // *** Allow native tokens but validate that native tokens are sent from contract address
-            // *** validate where token is sent from
-            let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
+            // ### CHECKED
+            // validate received from an allowed address
+            match next_hop.clone().from_token {
                 Token::Snip20(SecretContract {
                     address,
                     contract_hash,
-                }) => (address, contract_hash),
-                Token::Native(_) => {
-                    return Err(StdError::generic_err(
-                        "Native tokens can only be the input or output tokens.",
-                    ));
-                }
-            };
-            let from_pair_of_current_hop: _ = match current_hop {
-                Some(Hop {
-                    from_token: _,
-                    smart_contract,
-                    ..
                 }) => {
-                    next_hop.migrate_to_token.is_none()
-                        && next_hop.shade_protocol_router_path.is_none()
-                        && smart_contract.clone().unwrap().address == from
-                        || next_hop.shade_protocol_router_path.is_some()
-                            && from == smart_contract.unwrap().address
-                        || next_hop.migrate_to_token.is_some() && from == env.contract.address
+                    // Authorize
+                    authorize(env.message.sender, address)?;
+                    match current_hop {
+                        Some(Hop {
+                            smart_contract,
+                            redeem_denom,
+                            migrate_to_token,
+                            shade_protocol_router_path,
+                            ..
+                        }) => {
+                            // 1. wrapped (redeem_denom present) - from must be from this contract
+                            // 2. from migration contract - from must be from this contract
+                            // 3. shade_protocol_router_path - from must be current_hop smart contract
+                            if redeem_denom.is_some() {
+                                authorize(env.contract.address, from)?;
+                            } else if migrate_to_token.is_some() {
+                                authorize(env.contract.address, from)?;
+                            } else if smart_contract.is_some() {
+                                authorize(smart_contract.unwrap().address, from)?;
+                            }
+                        }
+                    }
                 }
-                None => false,
+                Token::Native(_) => {
+                    // Native token in handle_hop can only be from the contract
+                    authorize(env.message.sender, env.contract.address)?;
+                }
             };
-            if env.message.sender != from_token_address || !from_pair_of_current_hop {
-                return Err(StdError::generic_err(
-                    "Route can only be called by receiving the token of the next hop from the previous pair.",
-                ));
-            }
 
             let mut messages = vec![];
-            let current_hop = Some(next_hop.clone());
             if hops.is_empty() {
                 // last hop
                 // 1. set is_done to true for FinalizeRoute
@@ -342,20 +344,32 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 }
                 // Send fee to appropriate person
                 if amount > estimated_amount {
-                    let fee_recipient = if from_token_address == config.button.address {
-                        config.butt_lode.address
-                    } else {
-                        config.initiator
+                    match next_hop.clone().from_token {
+                        Token::Snip20(SecretContract {
+                            address,
+                            contract_hash,
+                        }) => {
+                            let fee_recipient = if address == config.button.address {
+                                config.butt_lode.address
+                            } else {
+                                config.initiator
+                            };
+                            messages.push(snip20::transfer_msg(
+                                fee_recipient,
+                                (amount - estimated_amount).unwrap(),
+                                None,
+                                BLOCK_SIZE,
+                                contract_hash.clone(),
+                                address.clone(),
+                            )?);
+                            amount = estimated_amount
+                        }
+                        Token::Native(_) => {
+                            // Native token in handle_hop can only be from the contract
+                            authorize(env.message.sender, env.contract.address)?;
+                        }
                     };
-                    messages.push(snip20::transfer_msg(
-                        fee_recipient,
-                        (amount - estimated_amount).unwrap(),
-                        None,
-                        BLOCK_SIZE,
-                        from_token_code_hash.clone(),
-                        from_token_address.clone(),
-                    )?);
-                    amount = estimated_amount
+                    // With native tokens, fees may not apply if we're just unwrapping right? Same with migration, but no, it will, because the estimated amount will equal the amount so don't worry about it big strong ceo man. Cool guy have a good day. Champ.
                 }
                 if next_hop.smart_contract.is_some() {
                     let denom: String = next_hop.redeem_denom.unwrap();
@@ -386,8 +400,11 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     )?);
                 }
             } else {
-                messages = hop_messages(current_hop.clone().unwrap(), amount, &env)?;
+                messages = hop_messages(next_hop, amount, &env)?;
             }
+
+            // *** CHECKED
+            let current_hop = Some(next_hop.clone());
             store_route_state(
                 &mut deps.storage,
                 &RouteState {
