@@ -159,15 +159,9 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                 }),
             )?);
             msgs.push(snip20::send_msg(
-                hop.smart_contract.unwrap().address,
+                env.contract.address.clone(),
                 amount,
-                // build swap msg for the next hop
-                Some(to_binary(&Snip20Swap::Swap {
-                    // set expected_return to None because we don't care about slippage mid-route
-                    expected_return: None,
-                    // set the recepient of the swap to be this contract (the router)
-                    to: Some(env.contract.address.clone()),
-                })?),
+                None,
                 None,
                 BLOCK_SIZE,
                 contract_hash,
@@ -860,15 +854,9 @@ mod tests {
                     )
                     .unwrap(),
                 snip20::send_msg(
-                    mock_pair_contract().address,
+                    mock_contract().address,
                     transaction_amount,
-                    Some(
-                        to_binary(&Snip20Swap::Swap {
-                            expected_return: None,
-                            to: Some(mock_contract().address),
-                        })
-                        .unwrap()
-                    ),
+                    None,
                     None,
                     BLOCK_SIZE,
                     mock_sscrt().contract_hash,
