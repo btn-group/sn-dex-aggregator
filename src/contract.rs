@@ -264,7 +264,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
     from: HumanAddr,
-    mut amount: Uint128,
+    amount: Uint128,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     // This is a receive msg somewhere along the route
@@ -300,34 +300,36 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             match next_hop.clone().from_token {
                 Token::Snip20(SecretContract {
                     address,
-                    contract_hash,
+                    contract_hash: _,
                 }) => {
                     // Authorize
-                    authorize(env.message.sender, address)?;
+                    authorize(env.message.sender.clone(), address)?;
+
                     match current_hop {
                         Some(Hop {
-                            smart_contract,
-                            redeem_denom,
-                            migrate_to_token,
-                            shade_protocol_router_path,
+                            ref smart_contract,
+                            ref redeem_denom,
+                            ref migrate_to_token,
+                            shade_protocol_router_path: _,
                             ..
                         }) => {
                             // 1. wrapped (redeem_denom present) - from must be from this contract
                             // 2. from migration contract - from must be from this contract
                             // 3. shade_protocol_router_path - from must be current_hop smart contract
                             if redeem_denom.is_some() {
-                                authorize(env.contract.address, from)?;
+                                authorize(env.contract.address.clone(), from)?;
                             } else if migrate_to_token.is_some() {
-                                authorize(env.contract.address, from)?;
+                                authorize(env.contract.address.clone(), from)?;
                             } else if smart_contract.is_some() {
-                                authorize(smart_contract.unwrap().address, from)?;
+                                authorize(smart_contract.clone().unwrap().address, from)?;
                             }
                         }
+                        None => todo!(),
                     }
                 }
                 Token::Native(_) => {
                     // Native token in handle_hop can only be from the contract
-                    authorize(env.message.sender, env.contract.address)?;
+                    authorize(env.message.sender.clone(), env.contract.address.clone())?;
                 }
             };
 
@@ -344,6 +346,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 }
                 // Send fee to appropriate person
                 if amount > estimated_amount {
+                    let excess: Uint128 = (amount - estimated_amount).unwrap();
                     match next_hop.clone().from_token {
                         Token::Snip20(SecretContract {
                             address,
@@ -356,51 +359,65 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             };
                             messages.push(snip20::transfer_msg(
                                 fee_recipient,
-                                (amount - estimated_amount).unwrap(),
+                                excess,
                                 None,
                                 BLOCK_SIZE,
                                 contract_hash.clone(),
                                 address.clone(),
                             )?);
-                            amount = estimated_amount
                         }
                         Token::Native(_) => {
-                            // Native token in handle_hop can only be from the contract
-                            authorize(env.message.sender, env.contract.address)?;
+                            let fee_recipient = config.initiator;
+                            match current_hop {
+                                Some(Hop {
+                                    ref redeem_denom, ..
+                                }) => {
+                                    messages.push(CosmosMsg::Bank(BankMsg::Send {
+                                        from_address: env.contract.address.clone(),
+                                        to_address: fee_recipient,
+                                        amount: vec![Coin {
+                                            amount: excess,
+                                            denom: redeem_denom.clone().unwrap(),
+                                        }],
+                                    }));
+                                }
+                                None => todo!(),
+                            }
                         }
                     };
-                    // With native tokens, fees may not apply if we're just unwrapping right? Same with migration, but no, it will, because the estimated amount will equal the amount so don't worry about it big strong ceo man. Cool guy have a good day. Champ.
                 }
-                if next_hop.smart_contract.is_some() {
-                    let denom: String = next_hop.redeem_denom.unwrap();
-                    let smart_contract: SecretContract = next_hop.smart_contract.unwrap();
-                    messages.push(snip20::redeem_msg(
-                        amount,
-                        Some(denom.clone()),
-                        None,
-                        BLOCK_SIZE,
-                        smart_contract.contract_hash,
-                        smart_contract.address,
-                    )?);
-                    let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
-                    messages.push(CosmosMsg::Bank(BankMsg::Send {
-                        from_address: env.contract.address.clone(),
-                        to_address: to.clone(),
-                        amount: withdrawal_coins,
-                    }));
-                } else {
-                    messages.push(snip20::send_msg(
-                        to.clone(),
-                        amount,
-                        None,
-                        None,
-                        BLOCK_SIZE,
-                        from_token_code_hash,
-                        from_token_address,
-                    )?);
-                }
+                // Send estimate amount to user
+                match next_hop.clone().from_token {
+                    Token::Snip20(SecretContract {
+                        address,
+                        contract_hash,
+                    }) => {
+                        messages.push(snip20::send_msg(
+                            to.clone(),
+                            estimated_amount,
+                            None,
+                            None,
+                            BLOCK_SIZE,
+                            contract_hash,
+                            address,
+                        )?);
+                    }
+                    Token::Native(_) => match current_hop {
+                        Some(Hop { redeem_denom, .. }) => {
+                            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                                from_address: env.contract.address.clone(),
+                                to_address: to.clone(),
+                                amount: vec![Coin {
+                                    amount: estimated_amount,
+                                    denom: redeem_denom.unwrap(),
+                                }],
+                            }));
+                        }
+                        None => todo!(),
+                    },
+                };
             } else {
-                messages = hop_messages(next_hop, amount, &env)?;
+                messages = hop_messages(next_hop.clone(), amount, &env)?;
             }
 
             // *** CHECKED
@@ -1097,7 +1114,7 @@ mod tests {
         // == * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
-            StdError::generic_err("Route can only be called by receiving the token of the next hop from the previous pair.")
+            StdError::Unauthorized { backtrace: None }
         );
         // == when from this contract
         let handle_msg = HandleMsg::Receive {
@@ -1177,7 +1194,7 @@ mod tests {
         // ==== when this is the last hop
         // ===== when the amount is less than the minimum_acceptable_amount
         let handle_msg = HandleMsg::Receive {
-            from: mock_pair_contract_two().address,
+            from: mock_contract().address,
             msg: None,
             amount: (minimum_acceptable_amount - Uint128(1)).unwrap(),
         };
@@ -1202,7 +1219,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    redeem_denom: None,
+                    redeem_denom: Some("uscrt".to_string()),
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1218,7 +1235,7 @@ mod tests {
         .unwrap();
         // ======= * it transfers the from token to the to value
         let handle_msg = HandleMsg::Receive {
-            from: mock_pair_contract().address,
+            from: mock_contract().address,
             msg: None,
             amount: transaction_amount,
         };
@@ -1228,7 +1245,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![snip20::send_msg(
                 mock_user_address(),
-                transaction_amount,
+                estimated_amount,
                 None,
                 None,
                 BLOCK_SIZE,
@@ -1241,8 +1258,8 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: Token::Snip20(mock_button()),
-            redeem_denom: Some(denom.clone()),
-            smart_contract: Some(mock_button()),
+            redeem_denom: None,
+            smart_contract: None,
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
@@ -1288,23 +1305,16 @@ mod tests {
                     mock_button().address,
                 )
                 .unwrap(),
-                snip20::redeem_msg(
+                snip20::send_msg(
+                    mock_user_address(),
                     estimated_amount,
-                    Some(denom.clone()),
+                    None,
                     None,
                     BLOCK_SIZE,
                     mock_button().contract_hash,
                     mock_button().address,
                 )
-                .unwrap(),
-                CosmosMsg::Bank(BankMsg::Send {
-                    from_address: mock_contract().address,
-                    to_address: mock_user_address(),
-                    amount: vec![Coin {
-                        denom: denom,
-                        amount: estimated_amount
-                    }],
-                })
+                .unwrap()
             ]
         );
         // ======= when the from token is not BUTT
