@@ -28,3 +28,21 @@ pub fn validate_received_token(token: Token, amount: Uint128, env: &Env) -> StdR
 
     Ok(())
 }
+
+pub fn validate_user_is_the_receiver(
+    token: Token,
+    from: HumanAddr,
+    to: HumanAddr,
+    sender: HumanAddr,
+) -> StdResult<()> {
+    match token {
+        Token::Snip20(SecretContract { .. }) => {
+            authorize(from, to)?;
+        }
+        Token::Native(SecretContract { .. }) => {
+            authorize(sender, to.clone())?;
+        }
+    }
+
+    Ok(())
+}

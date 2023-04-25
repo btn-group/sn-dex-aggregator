@@ -1,4 +1,4 @@
-use crate::authorize::{authorize, validate_received_token};
+use crate::authorize::{authorize, validate_received_token, validate_user_is_the_receiver};
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, QueryMsg, ShadeProtocol, Snip20, Snip20Swap},
@@ -205,25 +205,15 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     let first_hop: Hop = hops.pop_front().unwrap();
 
     // *** CHECKED
-    validate_received_token(first_hop.from_token.clone(), amount, env)?;
+    validate_received_token(first_hop.from_token.clone(), amount, &env)?;
 
     // *** CHECKED
-    // validate_user_is_the_receiver
-    match first_hop.from_token {
-        // first hop is a snip20
-        Token::Snip20(SecretContract {
-            address: _,
-            contract_hash: _,
-        }) => {
-            authorize(from, to.clone())?;
-        }
-        Token::Native(SecretContract {
-            address: _,
-            contract_hash: _,
-        }) => {
-            authorize(env.message.sender.clone(), to.clone())?;
-        }
-    }
+    validate_user_is_the_receiver(
+        first_hop.from_token.clone(),
+        from,
+        to.clone(),
+        env.message.sender.clone(),
+    )?;
 
     // *** CHECKED
     store_route_state(
@@ -555,13 +545,6 @@ mod tests {
         SecretContract {
             address: HumanAddr::from("mock-button-address"),
             contract_hash: "mock-button-contract-hash".to_string(),
-        }
-    }
-
-    fn mock_butt_lode() -> SecretContract {
-        SecretContract {
-            address: HumanAddr::from("mock-buttlode-address"),
-            contract_hash: "mock-buttlode-contract-hash".to_string(),
         }
     }
 
