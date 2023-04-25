@@ -210,6 +210,24 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     // *** CHECKED
     validate_received_token(first_hop.from_token.clone(), amount, env)?;
 
+    // *** CHECKED
+    // validate_user_is_the_receiver
+    match first_hop.from_token {
+        // first hop is a snip20
+        Token::Snip20(SecretContract {
+            address: _,
+            contract_hash: _,
+        }) => {
+            authorize(from, to.clone())?;
+        }
+        Token::Native(SecretContract {
+            address: _,
+            contract_hash: _,
+        }) => {
+            authorize(env.message.sender.clone(), to.clone())?;
+        }
+    }
+
     store_route_state(
         &mut deps.storage,
         &RouteState {
@@ -218,27 +236,12 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
                 hops: hops.clone(), // hops was mutated earlier when we did `hops.pop_front()`
                 estimated_amount,
                 minimum_acceptable_amount,
-                to: to.clone(),
+                to,
             },
         },
     )?;
 
     let mut msgs = hop_messages(first_hop.clone(), amount, &env)?;
-    match first_hop.from_token {
-        // first hop is a snip20
-        Token::Snip20(SecretContract {
-            address: _,
-            contract_hash: _,
-        }) => {
-            authorize(from, to)?;
-        }
-        Token::Native(SecretContract {
-            address: _,
-            contract_hash: _,
-        }) => {
-            authorize(env.message.sender.clone(), to)?;
-        }
-    }
 
     msgs.push(
         // finalize the route at the end, to make sure the route was completed successfully
