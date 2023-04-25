@@ -17,13 +17,11 @@ use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: InitMsg,
+    _msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config: Config = Config {
-        button: msg.button,
-        butt_lode: msg.butt_lode,
-        initiator: env.message.sender,
+        admin: env.message.sender,
     };
     config_store.store(CONFIG_KEY, &config)?;
 
@@ -342,10 +340,43 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                 }
                 // Send fee to appropriate person
                 if amount > estimated_amount {
+<<<<<<< Updated upstream
                     let fee_recipient = if from_token_address == config.button.address {
                         config.butt_lode.address
                     } else {
                         config.initiator
+=======
+                    let excess: Uint128 = (amount - estimated_amount).unwrap();
+                    match next_hop.clone().from_token {
+                        Token::Snip20(SecretContract {
+                            address,
+                            contract_hash,
+                        }) => {
+                            messages.push(snip20::transfer_msg(
+                                config.admin,
+                                excess,
+                                None,
+                                BLOCK_SIZE,
+                                contract_hash.clone(),
+                                address.clone(),
+                            )?);
+                        }
+                        Token::Native(_) => match current_hop {
+                            Some(Hop {
+                                ref redeem_denom, ..
+                            }) => {
+                                messages.push(CosmosMsg::Bank(BankMsg::Send {
+                                    from_address: env.contract.address.clone(),
+                                    to_address: config.admin,
+                                    amount: vec![Coin {
+                                        amount: excess,
+                                        denom: redeem_denom.clone().unwrap(),
+                                    }],
+                                }));
+                            }
+                            None => todo!(),
+                        },
+>>>>>>> Stashed changes
                     };
                     messages.push(snip20::transfer_msg(
                         fee_recipient,
@@ -465,7 +496,7 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
     token: Option<SecretContract>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
-    authorize(config.initiator.clone(), env.message.sender.clone())?;
+    authorize(config.admin.clone(), env.message.sender.clone())?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     if let Some(denom_unwrapped) = denom {
@@ -475,14 +506,14 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
         }];
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             from_address: env.contract.address.clone(),
-            to_address: config.initiator.clone(),
+            to_address: config.admin.clone(),
             amount: withdrawal_coin,
         }));
     }
 
     if let Some(token_unwrapped) = token {
         messages.push(snip20::transfer_msg(
-            config.initiator,
+            config.admin,
             amount,
             None,
             BLOCK_SIZE,
@@ -521,12 +552,9 @@ mod tests {
         StdResult<InitResponse>,
         Extern<MockStorage, MockApi, MockQuerier>,
     ) {
-        let env = mock_env(mock_contract_initiator_address(), &[]);
+        let env = mock_env(mock_contract_admin_address(), &[]);
         let mut deps = mock_dependencies(20, &[]);
-        let msg = InitMsg {
-            button: mock_button(),
-            butt_lode: mock_butt_lode(),
-        };
+        let msg = InitMsg {};
         (init(&mut deps, env, msg), deps)
     }
 
@@ -552,7 +580,7 @@ mod tests {
         }
     }
 
-    fn mock_contract_initiator_address() -> HumanAddr {
+    fn mock_contract_admin_address() -> HumanAddr {
         HumanAddr::from("btn.group")
     }
 
@@ -1325,12 +1353,12 @@ mod tests {
         };
         let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         let handle_result_unwrapped = handle_result.unwrap();
-        // ======= * it transfers the positive slippage to contract initiator
+        // ======= * it transfers the positive slippage to contract admin
         assert_eq!(
             handle_result_unwrapped.messages,
             vec![
                 snip20::transfer_msg(
-                    mock_contract_initiator_address(),
+                    mock_contract_admin_address(),
                     estimated_amount,
                     None,
                     BLOCK_SIZE,
@@ -1407,7 +1435,7 @@ mod tests {
         );
 
         // = when called by the admin
-        env = mock_env(mock_contract_initiator_address(), &[]);
+        env = mock_env(mock_contract_admin_address(), &[]);
         // == when only denom is specified
         handle_msg = HandleMsg::RescueTokens {
             amount,
@@ -1421,7 +1449,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![CosmosMsg::Bank(BankMsg::Send {
                 from_address: env.contract.address,
-                to_address: mock_contract_initiator_address(),
+                to_address: mock_contract_admin_address(),
                 amount: vec![Coin {
                     denom: denom,
                     amount
@@ -1438,14 +1466,14 @@ mod tests {
         // == * it sends the amount specified of the token to the admin
         let handle_result = handle(
             &mut deps,
-            mock_env(mock_contract_initiator_address(), &[]),
+            mock_env(mock_contract_admin_address(), &[]),
             handle_msg.clone(),
         );
         let handle_result_unwrapped = handle_result.unwrap();
         assert_eq!(
             handle_result_unwrapped.messages,
             vec![snip20::transfer_msg(
-                mock_contract_initiator_address(),
+                mock_contract_admin_address(),
                 amount,
                 None,
                 BLOCK_SIZE,
