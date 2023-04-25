@@ -119,12 +119,17 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     smart_contract.contract_hash,
                     smart_contract.address,
                 )?);
-                let withdrawal_coins: Vec<Coin> = vec![Coin { denom, amount }];
-                msgs.push(CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address.clone(),
-                    to_address: env.contract.address.clone(),
-                    amount: withdrawal_coins,
-                }));
+                msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::Receive {
+                        from: env.contract.address.clone(),
+                        msg: None,
+                        amount,
+                    })
+                    .unwrap(),
+                    send: vec![Coin { amount, denom }],
+                }))
             } else {
                 // Standard
                 msgs.push(snip20::send_msg(
@@ -1114,14 +1119,19 @@ mod tests {
                     mock_pair_contract_two().address
                 )
                 .unwrap(),
-                CosmosMsg::Bank(BankMsg::Send {
-                    from_address: mock_contract().address.clone(),
-                    to_address: mock_contract().address.clone(),
-                    amount: [Coin {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: mock_contract().address.clone(),
+                    callback_code_hash: mock_contract().contract_hash.clone(),
+                    msg: to_binary(&HandleMsg::Receive {
+                        from: mock_contract().address,
+                        msg: None,
+                        amount: transaction_amount,
+                    })
+                    .unwrap(),
+                    send: vec![Coin {
                         amount: transaction_amount,
                         denom: denom.clone()
-                    }]
-                    .to_vec(),
+                    }],
                 })
             ]
         );
