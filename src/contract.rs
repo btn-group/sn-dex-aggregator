@@ -854,15 +854,9 @@ mod tests {
                     )
                     .unwrap(),
                 snip20::send_msg(
-                    mock_pair_contract().address,
+                    mock_contract().address,
                     transaction_amount,
-                    Some(
-                        to_binary(&Snip20Swap::Swap {
-                            expected_return: None,
-                            to: Some(mock_contract().address),
-                        })
-                        .unwrap()
-                    ),
+                    None,
                     None,
                     BLOCK_SIZE,
                     mock_sscrt().contract_hash,
