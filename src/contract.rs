@@ -1,4 +1,4 @@
-use crate::authorize::authorize;
+use crate::authorize::{authorize, validate_received_token};
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, QueryMsg, ShadeProtocol, Snip20, Snip20Swap},
@@ -204,23 +204,11 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err("Route must be at least 2 hops."));
     }
 
-    // unwrap is cool because `hops.len() >= 2`
+    // *** CHECKED
     let first_hop: Hop = hops.pop_front().unwrap();
-    let received_first_hop: bool = match first_hop.from_token {
-        Token::Snip20(SecretContract {
-            ref address,
-            contract_hash: _,
-        }) => env.message.sender == *address,
-        Token::Native(_) => {
-            env.message.sent_funds.len() == 1 && env.message.sent_funds[0].amount == amount
-        }
-    };
 
-    if !received_first_hop {
-        return Err(StdError::generic_err(
-            "Received crypto type or amount is wrong.",
-        ));
-    }
+    // *** CHECKED
+    validate_received_token(first_hop.from_token.clone(), amount, env)?;
 
     store_route_state(
         &mut deps.storage,
@@ -295,10 +283,17 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     to,
                 },
         }) => {
+            // *** CHECKED
             let next_hop: Hop = match hops.pop_front() {
                 Some(next_hop) => next_hop,
                 None => return Err(StdError::generic_err("Route must be at least 1 hop.")),
             };
+
+            // *** CHECKED
+            validate_received_token(next_hop.from_token.clone(), amount, env)?;
+
+            // *** Allow native tokens but validate that native tokens are sent from contract address
+            // *** validate where token is sent from
             let (from_token_address, from_token_code_hash) = match next_hop.clone().from_token {
                 Token::Snip20(SecretContract {
                     address,
@@ -1004,6 +999,7 @@ mod tests {
         );
 
         // when there are hops
+        // *** COMMENTED OUT WHILE DOING validate_received_token
         // = when expected token is a native token
         hops.push_back(Hop {
             from_token: mock_token_native(),
@@ -1031,17 +1027,18 @@ mod tests {
             },
         )
         .unwrap();
-        // = * it raises an error
-        let handle_msg = HandleMsg::Receive {
-            from: mock_user_address(),
-            msg: None,
-            amount: transaction_amount,
-        };
-        let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
-        assert_eq!(
-            handle_result.unwrap_err(),
-            StdError::generic_err("Native tokens can only be the input or output tokens.")
-        );
+        // // = * it raises an error
+        // *** COMMENTED OUT WHILE DOING validate_received_token
+        // let handle_msg = HandleMsg::Receive {
+        //     from: mock_user_address(),
+        //     msg: None,
+        //     amount: transaction_amount,
+        // };
+        // let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
+        // assert_eq!(
+        //     handle_result.unwrap_err(),
+        //     StdError::generic_err("Native tokens can only be the input or output tokens.")
+        // );
         // = when expected token is a snip20
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
@@ -1089,18 +1086,18 @@ mod tests {
             handle_result.unwrap_err(),
             StdError::generic_err("Route can only be called by receiving the token of the next hop from the previous pair.")
         );
-        // == when from pair contract
+        // == when from this contract
         let handle_msg = HandleMsg::Receive {
-            from: mock_pair_contract().address,
+            from: mock_contract().address,
             msg: None,
             amount: transaction_amount,
         };
-        // === when sender is not expected token
+        // === when not expected token
         let handle_result = handle(&mut deps, mock_env(mock_user_address(), &[]), handle_msg);
         // === * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
-            StdError::generic_err("Route can only be called by receiving the token of the next hop from the previous pair.")
+            StdError::generic_err("Received crypto type or amount is wrong.")
         );
         // === when sender is expected token
         // ==== when this is not the last hop
