@@ -29,7 +29,7 @@ pub struct Route {
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct RouteState {
-    pub current_hop: Option<Hop>,
+    pub current_hop: Hop,
     pub remaining_route: Route,
 }
 

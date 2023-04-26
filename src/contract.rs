@@ -223,7 +223,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     store_route_state(
         &mut deps.storage,
         &RouteState {
-            current_hop: Some(first_hop.clone()),
+            current_hop: first_hop.clone(),
             remaining_route: Route {
                 hops: hops.clone(), // hops was mutated earlier when we did `hops.pop_front()`
                 estimated_amount,
@@ -289,7 +289,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
             // ### CHECKED
             validate_received_from_an_allowed_address(
-                current_hop.clone().unwrap(),
+                current_hop.clone(),
                 next_hop.clone(),
                 env,
                 from,
@@ -323,21 +323,16 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                                 address.clone(),
                             )?);
                         }
-                        Token::Native(_) => match current_hop {
-                            Some(Hop {
-                                ref redeem_denom, ..
-                            }) => {
-                                messages.push(CosmosMsg::Bank(BankMsg::Send {
-                                    from_address: env.contract.address.clone(),
-                                    to_address: config.admin,
-                                    amount: vec![Coin {
-                                        amount: excess,
-                                        denom: redeem_denom.clone().unwrap(),
-                                    }],
-                                }));
-                            }
-                            None => todo!(),
-                        },
+                        Token::Native(_) => {
+                            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                                from_address: env.contract.address.clone(),
+                                to_address: config.admin,
+                                amount: vec![Coin {
+                                    amount: excess,
+                                    denom: current_hop.redeem_denom.clone().unwrap(),
+                                }],
+                            }));
+                        }
                     };
                 }
                 // Send estimate amount to user
@@ -356,32 +351,28 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             address,
                         )?);
                     }
-                    Token::Native(_) => match current_hop {
-                        Some(Hop { redeem_denom, .. }) => {
-                            messages.push(CosmosMsg::Bank(BankMsg::Send {
-                                from_address: env.contract.address.clone(),
-                                to_address: to.clone(),
-                                amount: vec![Coin {
-                                    amount: estimated_amount,
-                                    denom: redeem_denom.unwrap(),
-                                }],
-                            }));
-                        }
-                        None => todo!(),
-                    },
+                    Token::Native(_) => {
+                        messages.push(CosmosMsg::Bank(BankMsg::Send {
+                            from_address: env.contract.address.clone(),
+                            to_address: to.clone(),
+                            amount: vec![Coin {
+                                amount: estimated_amount,
+                                denom: current_hop.redeem_denom.unwrap(),
+                            }],
+                        }));
+                    }
                 };
             } else {
                 messages = hop_messages(next_hop.clone(), amount, &env)?;
             }
 
             // *** CHECKED
-            let current_hop = Some(next_hop.clone());
             store_route_state(
                 &mut deps.storage,
                 &RouteState {
-                    current_hop,
+                    current_hop: next_hop,
                     remaining_route: Route {
-                        hops, // hops was mutated earlier when we did `hops.pop_front()`
+                        hops,
                         estimated_amount,
                         minimum_acceptable_amount,
                         to,
@@ -600,13 +591,13 @@ mod tests {
             shade_protocol_router_path: None,
         });
         let route_state: RouteState = RouteState {
-            current_hop: Some(Hop {
+            current_hop: Hop {
                 from_token: mock_token_native(),
                 redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
-            }),
+            },
             remaining_route: Route {
                 hops: hops,
                 estimated_amount: Uint128(1_000_000),
@@ -640,13 +631,13 @@ mod tests {
         // = when there are no hops
         let hops: VecDeque<Hop> = VecDeque::new();
         let route_state: RouteState = RouteState {
-            current_hop: Some(Hop {
+            current_hop: Hop {
                 from_token: mock_token_native(),
                 redeem_denom: None,
                 smart_contract: Some(mock_pair_contract()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
-            }),
+            },
             remaining_route: Route {
                 hops: hops,
                 estimated_amount: Uint128(1_000_000),
@@ -792,7 +783,7 @@ mod tests {
         let handle_result_unwrapped = handle(&mut deps, env.clone(), handle_msg).unwrap();
         // == * it stores the route state
         let route_state: RouteState = read_route_state(&deps.storage).unwrap().unwrap();
-        assert_eq!(route_state.current_hop, Some(hops.pop_front().unwrap()));
+        assert_eq!(route_state.current_hop, hops.pop_front().unwrap());
         assert_eq!(
             route_state.remaining_route,
             Route {
@@ -932,7 +923,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: None,
+                current_hop: Hop {
+                    from_token: mock_token_native(),
+                    redeem_denom: None,
+                    smart_contract: Some(mock_pair_contract()),
+                    migrate_to_token: None,
+                    shade_protocol_router_path: None,
+                },
                 remaining_route: Route {
                     hops: hops.clone(),
                     estimated_amount: estimated_amount,
@@ -967,13 +964,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
+                current_hop: Hop {
                     from_token: mock_token_native(),
                     redeem_denom: None,
                     smart_contract: Some(mock_button()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
-                }),
+                },
                 remaining_route: Route {
                     hops,
                     estimated_amount: estimated_amount,
@@ -983,18 +980,6 @@ mod tests {
             },
         )
         .unwrap();
-        // // = * it raises an error
-        // *** COMMENTED OUT WHILE DOING validate_received_token
-        // let handle_msg = HandleMsg::Receive {
-        //     from: mock_user_address(),
-        //     msg: None,
-        //     amount: transaction_amount,
-        // };
-        // let handle_result = handle(&mut deps, mock_env(mock_button().address, &[]), handle_msg);
-        // assert_eq!(
-        //     handle_result.unwrap_err(),
-        //     StdError::generic_err("Native tokens can only be the input or output tokens.")
-        // );
         // = when expected token is a snip20
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
@@ -1014,13 +999,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
+                current_hop: Hop {
                     from_token: mock_token_native(),
                     redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
-                }),
+                },
                 remaining_route: Route {
                     hops: hops.clone(),
                     estimated_amount: estimated_amount,
@@ -1098,7 +1083,7 @@ mod tests {
         // ==== * it stores the updated route state
         let route_state = read_route_state(&deps.storage).unwrap().unwrap();
         assert_eq!(
-            route_state.current_hop.unwrap(),
+            route_state.current_hop,
             Hop {
                 from_token: mock_token_snip20(),
                 redeem_denom: Some(mock_denom()),
@@ -1143,13 +1128,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
+                current_hop: Hop {
                     from_token: mock_token_native(),
                     redeem_denom: Some(mock_denom()),
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
-                }),
+                },
                 remaining_route: Route {
                     hops: hops,
                     estimated_amount: estimated_amount,
@@ -1192,13 +1177,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
+                current_hop: Hop {
                     from_token: mock_token_native(),
                     redeem_denom: None,
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
-                }),
+                },
                 remaining_route: Route {
                     hops,
                     estimated_amount: estimated_amount,
@@ -1221,13 +1206,13 @@ mod tests {
         store_route_state(
             &mut deps.storage,
             &RouteState {
-                current_hop: Some(Hop {
+                current_hop: Hop {
                     from_token: mock_token_native(),
                     redeem_denom: None,
                     smart_contract: Some(mock_pair_contract_two()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
-                }),
+                },
                 remaining_route: Route {
                     hops,
                     estimated_amount: estimated_amount,
