@@ -107,15 +107,13 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                 )?);
             } else if hop.redeem_denom.is_some() {
                 // Redeen denom
-                let denom: String = hop.redeem_denom.unwrap();
-                let smart_contract: SecretContract = hop.smart_contract.unwrap();
                 msgs.push(snip20::redeem_msg(
                     amount,
-                    Some(denom.clone()),
+                    hop.redeem_denom.clone(),
                     None,
                     BLOCK_SIZE,
-                    smart_contract.contract_hash,
-                    smart_contract.address,
+                    contract_hash,
+                    address,
                 )?);
                 msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: env.contract.address.clone(),
@@ -126,7 +124,10 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                         amount,
                     })
                     .unwrap(),
-                    send: vec![Coin { amount, denom }],
+                    send: vec![Coin {
+                        amount,
+                        denom: hop.redeem_denom.unwrap(),
+                    }],
                 }))
             } else {
                 // Standard
@@ -515,6 +516,7 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::SecretContractForShadeProtocol;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
     use std::collections::VecDeque;
 
@@ -546,6 +548,10 @@ mod tests {
 
     fn mock_contract_initiator_address() -> HumanAddr {
         HumanAddr::from("btn.group")
+    }
+
+    fn mock_denom() -> String {
+        "uatom".to_string()
     }
 
     fn mock_pair_contract() -> SecretContract {
@@ -711,7 +717,7 @@ mod tests {
         let env = mock_env(
             mock_user_address(),
             &[Coin {
-                denom: "sscrt".to_string(),
+                denom: mock_denom(),
                 amount: transaction_amount,
             }],
         );
@@ -720,7 +726,7 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            redeem_denom: Some("some_denom".to_string()),
+            redeem_denom: Some(mock_denom()),
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -836,7 +842,7 @@ mod tests {
                         mock_sscrt().address,
                         Some(Coin {
                             amount: transaction_amount,
-                            denom: "some_denom".to_string(),
+                            denom: mock_denom(),
                         }),
                     )
                     .unwrap(),
@@ -944,7 +950,6 @@ mod tests {
     #[test]
     fn test_handle_hop() {
         let (_init_result, mut deps) = init_helper();
-        let denom: String = "uscrt".to_string();
         let minimum_acceptable_amount: Uint128 = Uint128(1_000_000);
         let estimated_amount: Uint128 = Uint128(10_000_000);
         let transaction_amount: Uint128 = minimum_acceptable_amount;
@@ -981,7 +986,7 @@ mod tests {
         // = when expected token is a native token
         hops.push_back(Hop {
             from_token: mock_token_native(),
-            redeem_denom: Some(denom.clone()),
+            redeem_denom: Some(mock_denom()),
             smart_contract: Some(mock_pair_contract()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
@@ -1021,15 +1026,15 @@ mod tests {
         let mut hops: VecDeque<Hop> = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            redeem_denom: Some(denom.clone()),
+            redeem_denom: Some(mock_denom()),
             smart_contract: Some(mock_pair_contract_two()),
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
-            redeem_denom: Some(denom.clone()),
-            smart_contract: Some(mock_pair_contract_two()),
+            redeem_denom: Some(mock_denom()),
+            smart_contract: None,
             migrate_to_token: None,
             shade_protocol_router_path: None,
         });
@@ -1094,11 +1099,11 @@ mod tests {
             vec![
                 snip20::redeem_msg(
                     transaction_amount,
-                    Some(denom.clone()),
+                    Some(mock_denom()),
                     None,
                     BLOCK_SIZE,
-                    mock_pair_contract_two().contract_hash,
-                    mock_pair_contract_two().address
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address
                 )
                 .unwrap(),
                 CosmosMsg::Wasm(WasmMsg::Execute {
@@ -1112,7 +1117,7 @@ mod tests {
                     .unwrap(),
                     send: vec![Coin {
                         amount: transaction_amount,
-                        denom: denom.clone()
+                        denom: mock_denom()
                     }],
                 })
             ]
@@ -1123,7 +1128,7 @@ mod tests {
             route_state.current_hop.unwrap(),
             Hop {
                 from_token: mock_token_snip20(),
-                redeem_denom: Some(denom.clone()),
+                redeem_denom: Some(mock_denom()),
                 smart_contract: Some(mock_pair_contract_two()),
                 migrate_to_token: None,
                 shade_protocol_router_path: None,
@@ -1167,7 +1172,7 @@ mod tests {
             &RouteState {
                 current_hop: Some(Hop {
                     from_token: mock_token_native(),
-                    redeem_denom: Some("uscrt".to_string()),
+                    redeem_denom: Some(mock_denom()),
                     smart_contract: Some(mock_pair_contract()),
                     migrate_to_token: None,
                     shade_protocol_router_path: None,
@@ -1294,6 +1299,190 @@ mod tests {
     }
 
     #[test]
+    fn test_hop_messages() {
+        let env = mock_env(mock_user_address(), &[]);
+        let amount = Uint128(555);
+        let shade_protocol_router_path: Option<Vec<SecretContractForShadeProtocol>> =
+            Some(vec![SecretContractForShadeProtocol {
+                addr: mock_pair_contract().address.to_string(),
+                code_hash: mock_pair_contract().contract_hash,
+            }]);
+        let mut hop: Hop = Hop {
+            from_token: mock_token_snip20(),
+            redeem_denom: None,
+            smart_contract: Some(mock_shade_protocol_router()),
+            migrate_to_token: None,
+            shade_protocol_router_path,
+        };
+        // when hop.from_token == Token::Snip20
+        // = when shade_protocol_router_path is present
+        // = * it sends the snip 20 to the hop smart contract with the SwapTokensForExact struct and path
+        let mut messages: Vec<CosmosMsg> = hop_messages(hop.clone(), amount, &env).unwrap();
+        assert_eq!(
+            messages,
+            vec![snip20::send_msg(
+                hop.smart_contract.unwrap().address,
+                amount,
+                // build swap msg for the next hop
+                Some(
+                    to_binary(&ShadeProtocol::SwapTokensForExact {
+                        // set the recepient of the swap to be this contract (the router)
+                        path: hop.shade_protocol_router_path.unwrap(),
+                    })
+                    .unwrap()
+                ),
+                None,
+                BLOCK_SIZE,
+                mock_sscrt().contract_hash,
+                mock_sscrt().address,
+            )
+            .unwrap()]
+        );
+        // = when migrate_to_token is present
+        hop = Hop {
+            from_token: mock_token_snip20(),
+            redeem_denom: None,
+            smart_contract: Some(mock_shade_protocol_router()),
+            migrate_to_token: Some(mock_button()),
+            shade_protocol_router_path: None,
+        };
+        // = * it sends the snip 20 to the hop smart contract and then it sends the migrate_to_token to itself
+        messages = hop_messages(hop.clone(), amount, &env).unwrap();
+        assert_eq!(
+            messages,
+            vec![
+                snip20::send_msg(
+                    hop.smart_contract.unwrap().address,
+                    amount,
+                    // build swap msg for the next hop
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
+                )
+                .unwrap(),
+                snip20::send_msg(
+                    env.contract.address.clone(),
+                    amount,
+                    // build swap msg for the next hop
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    mock_button().contract_hash,
+                    mock_button().address,
+                )
+                .unwrap(),
+            ]
+        );
+        // = when redeem_denom is present
+        // = * it unwraps the token and then sends the native token to itself with a receive message
+        hop = Hop {
+            from_token: mock_token_snip20(),
+            redeem_denom: Some(mock_denom()),
+            smart_contract: None,
+            migrate_to_token: None,
+            shade_protocol_router_path: None,
+        };
+        messages = hop_messages(hop, amount, &env).unwrap();
+        assert_eq!(
+            messages,
+            vec![
+                snip20::redeem_msg(
+                    amount,
+                    Some(mock_denom()),
+                    None,
+                    BLOCK_SIZE,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
+                )
+                .unwrap(),
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: env.contract.address.clone(),
+                    callback_code_hash: env.contract_code_hash.clone(),
+                    msg: to_binary(&HandleMsg::Receive {
+                        from: env.contract.address.clone(),
+                        msg: None,
+                        amount,
+                    })
+                    .unwrap(),
+                    send: vec![Coin {
+                        amount,
+                        denom: mock_denom()
+                    }],
+                }),
+            ]
+        );
+        // = when only smart_contract is present
+        // = It sends a swap request to specificed smart contract
+        hop = Hop {
+            from_token: mock_token_snip20(),
+            redeem_denom: None,
+            smart_contract: Some(mock_pair_contract()),
+            migrate_to_token: None,
+            shade_protocol_router_path: None,
+        };
+        messages = hop_messages(hop, amount, &env).unwrap();
+        assert_eq!(
+            messages,
+            vec![snip20::send_msg(
+                mock_pair_contract().address,
+                amount,
+                Some(
+                    to_binary(&Snip20Swap::Swap {
+                        // set expected_return to None because we don't care about slippage mid-route
+                        expected_return: None,
+                        // set the recepient of the swap to be this contract (the router)
+                        to: Some(env.contract.address.clone()),
+                    })
+                    .unwrap()
+                ),
+                None,
+                BLOCK_SIZE,
+                mock_sscrt().contract_hash,
+                mock_sscrt().address,
+            )
+            .unwrap(),]
+        );
+        // when hop.from_token == Token::Native
+        // = * it wraps the contract then sends it to itself
+        hop = Hop {
+            from_token: mock_token_native(),
+            redeem_denom: Some(mock_denom()),
+            smart_contract: None,
+            migrate_to_token: None,
+            shade_protocol_router_path: None,
+        };
+        messages = hop_messages(hop, amount, &env).unwrap();
+        assert_eq!(
+            messages,
+            vec![
+                Snip20::Deposit { padding: None }
+                    .to_cosmos_msg(
+                        BLOCK_SIZE,
+                        mock_sscrt().contract_hash,
+                        mock_sscrt().address,
+                        Some(Coin {
+                            amount,
+                            denom: mock_denom(),
+                        }),
+                    )
+                    .unwrap(),
+                snip20::send_msg(
+                    env.contract.address.clone(),
+                    amount,
+                    None,
+                    None,
+                    BLOCK_SIZE,
+                    mock_sscrt().contract_hash,
+                    mock_sscrt().address,
+                )
+                .unwrap()
+            ]
+        );
+    }
+
+    #[test]
     fn test_register_tokens() {
         let (_init_result, mut deps) = init_helper();
         let env = mock_env(mock_user_address(), &[]);
@@ -1331,11 +1520,10 @@ mod tests {
     #[test]
     fn test_rescue_tokens() {
         let (_init_result, mut deps) = init_helper();
-        let denom: String = "uscrt".to_string();
         let amount: Uint128 = Uint128(5);
         let mut handle_msg = HandleMsg::RescueTokens {
             amount,
-            denom: Some(denom.clone()),
+            denom: Some(mock_denom()),
             token: Some(mock_button()),
         };
         // = when called by a non-admin
@@ -1352,7 +1540,7 @@ mod tests {
         // == when only denom is specified
         handle_msg = HandleMsg::RescueTokens {
             amount,
-            denom: Some(denom.clone()),
+            denom: Some(mock_denom()),
             token: None,
         };
         // === * it sends the amount specified of the coin of the denom to the admin
@@ -1364,7 +1552,7 @@ mod tests {
                 from_address: env.contract.address,
                 to_address: mock_contract_initiator_address(),
                 amount: vec![Coin {
-                    denom: denom,
+                    denom: mock_denom(),
                     amount
                 }],
             })]
