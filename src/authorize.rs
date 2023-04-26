@@ -16,13 +16,7 @@ pub fn validate_received_from_an_allowed_address(
     from: HumanAddr,
 ) -> StdResult<()> {
     match next_hop.from_token {
-        Token::Snip20(SecretContract {
-            address,
-            contract_hash: _,
-        }) => {
-            // Authorize
-            authorize(env.message.sender.clone(), address)?;
-
+        Token::Snip20(SecretContract { .. }) => {
             // 1. wrapped (redeem_denom present) - from must be from this contract
             // 2. from migration contract - from must be from this contract
             // 3. shade_protocol_router_path - from must be current_hop smart contract
