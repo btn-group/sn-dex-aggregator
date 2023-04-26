@@ -4,7 +4,7 @@ use crate::authorize::{
 };
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
-    msg::{HandleMsg, InitMsg, ShadeProtocol, Snip20, Snip20Swap},
+    msg::{HandleMsg, InitMsg, QueryMsg, ShadeProtocol, Snip20, Snip20Swap},
     state::{
         delete_route_state, read_route_state, store_route_state, Config, Hop, Route, RouteState,
         SecretContract, Token,
@@ -428,6 +428,18 @@ fn rescue_tokens<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+pub fn query<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    msg: QueryMsg,
+) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Config {} => {
+            let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+            Ok(to_binary(&config)?)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,6 +526,16 @@ mod tests {
 
     fn mock_user_address() -> HumanAddr {
         HumanAddr::from("gary")
+    }
+
+    // === QUERY TESTS ===
+    #[test]
+    fn test_query_config() {
+        let (_init_result, deps) = init_helper();
+        let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
+        let query_result = query(&deps, QueryMsg::Config {}).unwrap();
+        let query_answer_config: Config = from_binary(&query_result).unwrap();
+        assert_eq!(query_answer_config, config);
     }
 
     // === HANDLE TESTS ===

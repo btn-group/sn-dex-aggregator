@@ -26,6 +26,12 @@ pub enum HandleMsg {
     },
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryMsg {
+    Config {},
+}
+
 // Adapted from https://github.com/scrtlabs/secret-toolkit/blob/master/packages/snip20/src/handle.rs
 // as that version only wraps scrt.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
