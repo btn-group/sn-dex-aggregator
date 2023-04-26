@@ -7,8 +7,17 @@
 ### Fees
 * Positive slippage is sent to the admin.
 
-## Testing locally examples
-THIS IS OUT OF DATE
+### Algorithm example (THIS IS OUT OF DATE)
+1. ATOM -> sATOM via sATOM smart contract
+2. sATOM -> SIENNA via trading pair smart contract on Sienna
+3. SIENNA -> sWBTC ...
+4. sWBTC -> BUTT via trading pair smart contract on Secret swap
+5. BUTT -> sXMR ...
+6. sXMR -> SEFI ...
+7. SEFI -> sSCRT ...
+8. sSCRT -> SCRT via sSCRT smart contract
+
+## Testing locally examples (THIS IS OUT OF DATE)
 ```
 # Run chain locally
 docker run -it --rm -p 26657:26657 -p 26656:26656 -p 1337:1337 -v $(pwd):/root/code --name secretdev enigmampc/secret-network-sw-dev
