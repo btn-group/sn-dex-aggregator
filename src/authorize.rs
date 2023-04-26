@@ -20,9 +20,7 @@ pub fn validate_received_from_an_allowed_address(
             // 1. wrapped (redeem_denom present) - from must be from this contract
             // 2. from migration contract - from must be from this contract
             // 3. shade_protocol_router_path - from must be current_hop smart contract
-            if current_hop.redeem_denom.is_some() {
-                authorize(env.contract.address.clone(), from)?;
-            } else if current_hop.migrate_to_token.is_some() {
+            if current_hop.redeem_denom.is_some() || current_hop.migrate_to_token.is_some() {
                 authorize(env.contract.address.clone(), from)?;
             } else if current_hop.smart_contract.is_some() {
                 authorize(current_hop.smart_contract.unwrap().address, from)?;
@@ -68,7 +66,7 @@ pub fn validate_user_is_the_receiver(
             authorize(from, to)?;
         }
         Token::Native(SecretContract { .. }) => {
-            authorize(sender, to.clone())?;
+            authorize(sender, to)?;
         }
     }
 

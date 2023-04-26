@@ -187,7 +187,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     }
 
     let first_hop: Hop = hops.pop_front().unwrap();
-    validate_received_token(first_hop.from_token.clone(), amount, &env)?;
+    validate_received_token(first_hop.from_token.clone(), amount, env)?;
     validate_user_is_the_receiver(
         first_hop.from_token.clone(),
         from,
@@ -207,7 +207,7 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             },
         },
     )?;
-    let mut messages = hop_messages(first_hop, amount, &env)?;
+    let mut messages = hop_messages(first_hop, amount, env)?;
     messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.clone(),
         callback_code_hash: env.contract_code_hash.clone(),
@@ -272,8 +272,8 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                                 excess,
                                 None,
                                 BLOCK_SIZE,
-                                contract_hash.clone(),
-                                address.clone(),
+                                contract_hash,
+                                address,
                             )?);
                         }
                         Token::Native(_) => {
@@ -316,7 +316,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     }
                 };
             } else {
-                messages = hop_messages(next_hop.clone(), amount, &env)?;
+                messages = hop_messages(next_hop.clone(), amount, env)?;
             }
             store_route_state(
                 &mut deps.storage,
