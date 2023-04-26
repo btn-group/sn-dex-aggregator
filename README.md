@@ -1,25 +1,14 @@
 # Secret network DEX aggregator V4
 
 ## How it works
-* User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems), the minimum acceptable amount and the estimated amount.
-* If the swaps don't end with the minimal acceptable ammount, the whole transaction is cancelled.
+* User sends in a cryptocurreny, the actions that need to be taken (swaps, deposits, redeems, migration), the minimum acceptable amount and the estimated amount.
+* If the swaps don't end with the minimal acceptable amount, the whole transaction is cancelled.
 
 ### Fees
-* Other protocols take the positive slippage and send it to an address.
-* We'd prefer an option where all positive slippage is swapped into BUTT and sent to BUTT lode, but can't figure out a good solution right now.
-* For this version of the contract, if there's any positive slippage and the out token is BUTT, we'll send it to BUTT lode, but the rest we'll send to a team account.
-
-### Algorithm example
-1. ATOM -> sATOM via sATOM smart contract
-2. sATOM -> SIENNA via trading pair smart contract on Sienna
-3. SIENNA -> sWBTC ...
-4. sWBTC -> BUTT via trading pair smart contract on Secret swap
-5. BUTT -> sXMR ...
-6. sXMR -> SEFI ...
-7. SEFI -> sSCRT ...
-8. sSCRT -> SCRT via sSCRT smart contract
+* Positive slippage is sent to the admin.
 
 ## Testing locally examples
+THIS IS OUT OF DATE
 ```
 # Run chain locally
 docker run -it --rm -p 26657:26657 -p 26656:26656 -p 1337:1337 -v $(pwd):/root/code --name secretdev enigmampc/secret-network-sw-dev
@@ -32,7 +21,6 @@ cd code
 
 # Store contracts required for test
 secretcli tx compute store button.wasm.gz --from a --gas 3000000 -y --keyring-backend test
-secretcli tx compute store butt-lode.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store secretswap-factory.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store secretswap-pair.wasm.gz --from a --gas 3000000 -y --keyring-backend test
 secretcli tx compute store secretswap-token.wasm.gz --from a --gas 3000000 -y --keyring-backend test
@@ -50,11 +38,6 @@ secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "Button" -y -
 # Set viewing key for Button
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"set_viewing_key": { "key": "testing" }}' --from a -y --keyring-backend test
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"set_viewing_key": { "key": "testing" }}' --from b -y --keyring-backend test
-
-# Init BUTT lode
-CODE_ID=2
-INIT='{"viewing_key": "DoTheRightThing.", "time_delay": 5}'
-secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "butt-lode" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
 
 # Init Secret Swap factory
 CODE_ID=3
@@ -82,11 +65,8 @@ secretcli tx compute execute secret1my3jvl6zs2n27648zngqrtw8pd23nrkrh0f7ax '{"pr
 
 # Init DEX aggregator
 CODE_ID=7
-INIT='{ "button": {"address": "secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg", "contract_hash": "4CD7F64B9ADE65200E595216265932A0C7689C4804BE7B4A5F8CEBED250BF7EA"}, "butt_lode": {"address": "secret10pyejy66429refv3g35g2t7am0was7ya6hvrzf", "contract_hash": "99F94EDC0D744B35A8FBCBDC8FB71C140CFA8F3F91FAD8C35B7CC37862A4AC95"} }'
-secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "DEX aggregator 2 | btn.group" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
-
-# Query config
-secretcli query compute query secret15rrl3qjafxzlzguu5x29xh29pam35uetwpfnna '{"config": {}}'
+INIT='{}'
+secretcli tx compute instantiate $CODE_ID "$INIT" --from a --label "DEX aggregator 4 | btn.group" -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
 
 # Register tokens
 secretcli tx compute execute secret15rrl3qjafxzlzguu5x29xh29pam35uetwpfnna '{"register_tokens":{"tokens": [{"address": "secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg", "contract_hash": "4CD7F64B9ADE65200E595216265932A0C7689C4804BE7B4A5F8CEBED250BF7EA"}, {"address": "secret1vc5zfwt08hu9cctdgkqk6j9y05w6ty0xa8g26s", "contract_hash": "35F5DB2BC5CD56815D10C7A567D6827BECCB8EAF45BC3FA016930C4A8209EA69"}]}}' --from a -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
@@ -114,10 +94,6 @@ secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"se
 
 # BUTT -> sSCRT -> BUTT
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"send": { "recipient": "secret15rrl3qjafxzlzguu5x29xh29pam35uetwpfnna", "amount": "300", "msg": "ewogICJob3BzIjogWwogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MTh2ZDhmcHd4emNrOTNxbHdnaGFqNmFyaDRwN2M1bjg5Nzh2c3lnIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjRDRDdGNjRCOUFERTY1MjAwRTU5NTIxNjI2NTkzMkEwQzc2ODlDNDgwNEJFN0I0QTVGOENFQkVEMjUwQkY3RUEiCiAgICAgICAgfQogICAgICB9LAogICAgICAic21hcnRfY29udHJhY3QiOiB7CiAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MW15M2p2bDZ6czJuMjc2NDh6bmdxcnR3OHBkMjNucmtyaDBmN2F4IiwKICAgICAgICAiY29udHJhY3RfaGFzaCI6ICIyRDVBMDVFNzJGM0Y2RTZGRDZGNjRDRTY2MzdCODJBQUYyNDYwOEM0Q0Q2M0E2RUMxMEY3M0NCNjA4QzA5OEZDIgogICAgICB9CiAgICB9LAogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MXZjNXpmd3QwOGh1OWNjdGRna3FrNmo5eTA1dzZ0eTB4YThnMjZzIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjM1RjVEQjJCQzVDRDU2ODE1RDEwQzdBNTY3RDY4MjdCRUNDQjhFQUY0NUJDM0ZBMDE2OTMwQzRBODIwOUVBNjkiCiAgICAgICAgfQogICAgICB9LAogICAgICAic21hcnRfY29udHJhY3QiOiB7CiAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MW15M2p2bDZ6czJuMjc2NDh6bmdxcnR3OHBkMjNucmtyaDBmN2F4IiwKICAgICAgICAiY29udHJhY3RfaGFzaCI6ICIyRDVBMDVFNzJGM0Y2RTZGRDZGNjRDRTY2MzdCODJBQUYyNDYwOEM0Q0Q2M0E2RUMxMEY3M0NCNjA4QzA5OEZDIgogICAgICB9CiAgICB9LAogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MTh2ZDhmcHd4emNrOTNxbHdnaGFqNmFyaDRwN2M1bjg5Nzh2c3lnIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjRDRDdGNjRCOUFERTY1MjAwRTU5NTIxNjI2NTkzMkEwQzc2ODlDNDgwNEJFN0I0QTVGOENFQkVEMjUwQkY3RUEiCiAgICAgICAgfQogICAgICB9CiAgICB9CiAgXSwKICAidG8iOiAic2VjcmV0MXBsMnIzMno5bjNlNDc5NTBzNmVqN21nN3BmaDdteGQwMDNndXVtIiwKICAiZXN0aW1hdGVkX2Ftb3VudCI6ICIyNTAiLAogICJtaW5pbXVtX2FjY2VwdGFibGVfYW1vdW50IjogIjI1MCIKfQ==" }}' --from a -y --keyring-backend test --gas 9000000 --gas-prices=3.0uscrt
-
-# Query that BUTT was sent to BUTT lode
-secretcli tx compute execute secret10pyejy66429refv3g35g2t7am0was7ya6hvrzf '{"set_viewing_key_for_snip20": {"token": {"address": "secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg", "contract_hash": "4CD7F64B9ADE65200E595216265932A0C7689C4804BE7B4A5F8CEBED250BF7EA"}}}' --from a -y --keyring-backend test --gas 3000000 --gas-prices=3.0uscrt
-secretcli query compute query secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"balance": {"address": "secret10pyejy66429refv3g35g2t7am0was7ya6hvrzf", "key": "DoTheRightThing."}}'
 
 # BUTT -> sSCRT -> BUTT -> sSCRT
 secretcli tx compute execute secret18vd8fpwxzck93qlwghaj6arh4p7c5n8978vsyg '{"send": { "recipient": "secret15rrl3qjafxzlzguu5x29xh29pam35uetwpfnna", "amount": "300", "msg": "ewogICJob3BzIjogWwogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MTh2ZDhmcHd4emNrOTNxbHdnaGFqNmFyaDRwN2M1bjg5Nzh2c3lnIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjRDRDdGNjRCOUFERTY1MjAwRTU5NTIxNjI2NTkzMkEwQzc2ODlDNDgwNEJFN0I0QTVGOENFQkVEMjUwQkY3RUEiCiAgICAgICAgfQogICAgICB9LAogICAgICAic21hcnRfY29udHJhY3QiOiB7CiAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MW15M2p2bDZ6czJuMjc2NDh6bmdxcnR3OHBkMjNucmtyaDBmN2F4IiwKICAgICAgICAiY29udHJhY3RfaGFzaCI6ICIyRDVBMDVFNzJGM0Y2RTZGRDZGNjRDRTY2MzdCODJBQUYyNDYwOEM0Q0Q2M0E2RUMxMEY3M0NCNjA4QzA5OEZDIgogICAgICB9CiAgICB9LAogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MXZjNXpmd3QwOGh1OWNjdGRna3FrNmo5eTA1dzZ0eTB4YThnMjZzIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjM1RjVEQjJCQzVDRDU2ODE1RDEwQzdBNTY3RDY4MjdCRUNDQjhFQUY0NUJDM0ZBMDE2OTMwQzRBODIwOUVBNjkiCiAgICAgICAgfQogICAgICB9LAogICAgICAic21hcnRfY29udHJhY3QiOiB7CiAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MW15M2p2bDZ6czJuMjc2NDh6bmdxcnR3OHBkMjNucmtyaDBmN2F4IiwKICAgICAgICAiY29udHJhY3RfaGFzaCI6ICIyRDVBMDVFNzJGM0Y2RTZGRDZGNjRDRTY2MzdCODJBQUYyNDYwOEM0Q0Q2M0E2RUMxMEY3M0NCNjA4QzA5OEZDIgogICAgICB9CiAgICB9LAogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MTh2ZDhmcHd4emNrOTNxbHdnaGFqNmFyaDRwN2M1bjg5Nzh2c3lnIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjRDRDdGNjRCOUFERTY1MjAwRTU5NTIxNjI2NTkzMkEwQzc2ODlDNDgwNEJFN0I0QTVGOENFQkVEMjUwQkY3RUEiCiAgICAgICAgfQogICAgICB9LAogICAgICAic21hcnRfY29udHJhY3QiOiB7CiAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MW15M2p2bDZ6czJuMjc2NDh6bmdxcnR3OHBkMjNucmtyaDBmN2F4IiwKICAgICAgICAiY29udHJhY3RfaGFzaCI6ICIyRDVBMDVFNzJGM0Y2RTZGRDZGNjRDRTY2MzdCODJBQUYyNDYwOEM0Q0Q2M0E2RUMxMEY3M0NCNjA4QzA5OEZDIgogICAgICB9CiAgICB9LAogICAgewogICAgICAiZnJvbV90b2tlbiI6IHsKICAgICAgICAic25pcDIwIjogewogICAgICAgICAgImFkZHJlc3MiOiAic2VjcmV0MXZjNXpmd3QwOGh1OWNjdGRna3FrNmo5eTA1dzZ0eTB4YThnMjZzIiwKICAgICAgICAgICJjb250cmFjdF9oYXNoIjogIjM1RjVEQjJCQzVDRDU2ODE1RDEwQzdBNTY3RDY4MjdCRUNDQjhFQUY0NUJDM0ZBMDE2OTMwQzRBODIwOUVBNjkiCiAgICAgICAgfQogICAgICB9CiAgICB9CiAgXSwKICAidG8iOiAic2VjcmV0MWprN3o2ZGhuOXRlM2poOWQ1c3hjbTh6dTA4N3prejN0cHh0bWZlIiwKICAiZXN0aW1hdGVkX2Ftb3VudCI6ICIyNTAiLAogICJtaW5pbXVtX2FjY2VwdGFibGVfYW1vdW50IjogIjI1MCIKfQ==" }}' --from b -y --keyring-backend test --gas 9000000 --gas-prices=3.0uscrt
