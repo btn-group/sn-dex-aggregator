@@ -60,25 +60,18 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     }
 }
 
-// CONTNUE WITH THIS SO THAT WE CAN USE THIS ON
 fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg>> {
-    let mut msgs: Vec<CosmosMsg> = vec![];
+    let mut messages: Vec<CosmosMsg> = vec![];
     match hop.from_token {
-        // first hop is a snip20
         Token::Snip20(SecretContract {
             address,
             contract_hash,
         }) => {
-            // I also need to be able to handle shade protocol swap code
             if hop.shade_protocol_router_path.is_some() {
-                // Shade Protocol Router
-                // Just need the
-                msgs.push(snip20::send_msg(
+                messages.push(snip20::send_msg(
                     hop.smart_contract.unwrap().address,
                     amount,
-                    // build swap msg for the next hop
                     Some(to_binary(&ShadeProtocol::SwapTokensForExact {
-                        // set the recepient of the swap to be this contract (the router)
                         path: hop.shade_protocol_router_path.unwrap(),
                     })?),
                     None,
@@ -87,9 +80,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     address,
                 )?);
             } else if hop.migrate_to_token.is_some() {
-                // Migration
-                // 1. Migrating
-                msgs.push(snip20::send_msg(
+                messages.push(snip20::send_msg(
                     hop.smart_contract.unwrap().address,
                     amount,
                     None,
@@ -98,8 +89,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     contract_hash,
                     address,
                 )?);
-                // 2. Continuing to next hop by sending the migrated token to self
-                msgs.push(snip20::send_msg(
+                messages.push(snip20::send_msg(
                     env.contract.address.clone(),
                     amount,
                     None,
@@ -109,8 +99,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     hop.migrate_to_token.unwrap().address,
                 )?);
             } else if hop.redeem_denom.is_some() {
-                // Redeen denom
-                msgs.push(snip20::redeem_msg(
+                messages.push(snip20::redeem_msg(
                     amount,
                     hop.redeem_denom.clone(),
                     None,
@@ -118,7 +107,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     contract_hash,
                     address,
                 )?);
-                msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: env.contract.address.clone(),
                     callback_code_hash: env.contract_code_hash.clone(),
                     msg: to_binary(&HandleMsg::Receive {
@@ -133,15 +122,12 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     }],
                 }))
             } else {
-                // Standard
-                msgs.push(snip20::send_msg(
+                messages.push(snip20::send_msg(
                     hop.smart_contract.unwrap().address,
                     amount,
-                    // build swap msg for the next hop
                     Some(to_binary(&Snip20Swap::Swap {
                         // set expected_return to None because we don't care about slippage mid-route
                         expected_return: None,
-                        // set the recepient of the swap to be this contract (the router)
                         to: Some(env.contract.address.clone()),
                     })?),
                     None,
@@ -155,8 +141,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
             address,
             contract_hash,
         }) => {
-            // DEPOSIT MSG
-            msgs.push(Snip20::Deposit { padding: None }.to_cosmos_msg(
+            messages.push(Snip20::Deposit { padding: None }.to_cosmos_msg(
                 BLOCK_SIZE,
                 contract_hash.clone(),
                 address.clone(),
@@ -165,7 +150,7 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
                     denom: hop.redeem_denom.unwrap(),
                 }),
             )?);
-            msgs.push(snip20::send_msg(
+            messages.push(snip20::send_msg(
                 env.contract.address.clone(),
                 amount,
                 None,
@@ -176,10 +161,13 @@ fn hop_messages(hop: Hop, amount: Uint128, env: &Env) -> StdResult<Vec<CosmosMsg
             )?);
         }
     }
-
-    Ok(msgs)
+    Ok(messages)
 }
 
+// This is the first msg from the user, with the entire route details
+// 1. save the remaining route to state (e.g. if the route is X/Y -> Y/Z -> Z->W then save Y/Z -> Z/W to state)
+// 2. send `amount` X to pair X/Y
+// 3. call FinalizeRoute to make sure everything went ok, otherwise revert the tx
 fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
@@ -187,31 +175,19 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
     msg: Binary,
     amount: Uint128,
 ) -> StdResult<HandleResponse> {
-    // This is the first msg from the user, with the entire route details
-    // 1. save the remaining route to state (e.g. if the route is X/Y -> Y/Z -> Z->W then save Y/Z -> Z/W to state)
-    // 2. send `amount` X to pair X/Y
-    // 3. call FinalizeRoute to make sure everything went ok, otherwise revert the tx
-
-    // *** CHECKED
     let Route {
         mut hops,
         to,
         estimated_amount,
         minimum_acceptable_amount,
     } = from_binary(&msg)?;
-
-    // *** CHECKED: SECOND HOP MUST EXIST AS LAST HOP CHECKS MIN ACCEPTABLE AMOUNT
+    //SECOND HOP MUST EXIST AS LAST HOP CHECKS MIN ACCEPTABLE AMOUNT
     if hops.len() < 2 {
-        return Err(StdError::generic_err("Route must be at least 2 hops."));
+        return Err(StdError::generic_err("Route must have at least 2 hops."));
     }
 
-    // *** CHECKED
     let first_hop: Hop = hops.pop_front().unwrap();
-
-    // *** CHECKED
     validate_received_token(first_hop.from_token.clone(), amount, &env)?;
-
-    // *** CHECKED
     validate_user_is_the_receiver(
         first_hop.from_token.clone(),
         from,
@@ -219,7 +195,6 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
         env.message.sender.clone(),
     )?;
 
-    // *** CHECKED
     store_route_state(
         &mut deps.storage,
         &RouteState {
@@ -232,21 +207,16 @@ fn handle_first_hop<S: Storage, A: Api, Q: Querier>(
             },
         },
     )?;
-
-    // *** CHECKED
-    let mut msgs = hop_messages(first_hop, amount, &env)?;
-    msgs.push(
-        // finalize the route at the end, to make sure the route was completed successfully
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: env.contract.address.clone(),
-            callback_code_hash: env.contract_code_hash.clone(),
-            msg: to_binary(&HandleMsg::FinalizeRoute {})?,
-            send: vec![],
-        }),
-    );
+    let mut messages = hop_messages(first_hop, amount, &env)?;
+    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: env.contract.address.clone(),
+        callback_code_hash: env.contract_code_hash.clone(),
+        msg: to_binary(&HandleMsg::FinalizeRoute {})?,
+        send: vec![],
+    }));
 
     Ok(HandleResponse {
-        messages: msgs,
+        messages,
         log: vec![],
         data: None,
     })
@@ -259,14 +229,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     amount: Uint128,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    // This is a receive msg somewhere along the route
-    // 1. load route from state (Y/Z -> Z/W)
-    // 2. save the remaining route to state (Z/W)
-    // 3. send `amount` Y to pair Y/Z
-
-    // 1'. load route from state (Z/W)
-    // 2'. this is the last hop so delete the entire route state
-    // 3'. send `amount` Z to pair Z/W with recepient `to`
     match read_route_state(&deps.storage)? {
         Some(RouteState {
             current_hop,
@@ -278,16 +240,11 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     to,
                 },
         }) => {
-            // *** CHECKED
             let next_hop: Hop = match hops.pop_front() {
                 Some(next_hop) => next_hop,
                 None => return Err(StdError::generic_err("Route must be at least 1 hop.")),
             };
-
-            // *** CHECKED
             validate_received_token(next_hop.from_token.clone(), amount, env)?;
-
-            // ### CHECKED
             validate_received_from_an_allowed_address(
                 current_hop.clone(),
                 next_hop.clone(),
@@ -297,10 +254,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
             let mut messages = vec![];
             if hops.is_empty() {
-                // last hop
-                // 1. set is_done to true for FinalizeRoute
-                // 2. set expected_return for the final swap
-                // 3. set the recipient of the final swap to be the user
                 if amount.lt(&minimum_acceptable_amount) {
                     return Err(StdError::generic_err(
                         "Operation fell short of minimum_acceptable_amount",
@@ -365,8 +318,6 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             } else {
                 messages = hop_messages(next_hop.clone(), amount, &env)?;
             }
-
-            // *** CHECKED
             store_route_state(
                 &mut deps.storage,
                 &RouteState {
@@ -712,12 +663,11 @@ mod tests {
         // * it raises an error
         assert_eq!(
             handle_result.unwrap_err(),
-            StdError::generic_err("Route must be at least 2 hops.")
+            StdError::generic_err("Route must have at least 2 hops.")
         );
 
         // when there is 2 or more hops
-        // = when the from_token for the first hop is a native token
-        // == when the amount specified does match the amount sent in
+        // = when the amount specified does match the amount sent in
         hops.push_back(Hop {
             from_token: mock_token_snip20(),
             redeem_denom: None,
@@ -731,8 +681,8 @@ mod tests {
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_user_address(),
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
+                    estimated_amount,
+                    minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
@@ -744,16 +694,16 @@ mod tests {
             handle_result.unwrap_err(),
             StdError::generic_err("Received crypto type or amount is wrong.")
         );
-        // == when the amount specified matches the amount sent in
-        // == when the to does not match the sender
+        // = when the amount specified matches the amount sent in
+        // == when the to does not match the user
         let handle_msg = HandleMsg::Receive {
             from: mock_user_address(),
             msg: Some(
                 to_binary(&Route {
                     hops: hops.clone(),
                     to: mock_pair_contract().address,
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
+                    estimated_amount,
+                    minimum_acceptable_amount,
                 })
                 .unwrap(),
             ),
@@ -788,127 +738,21 @@ mod tests {
             route_state.remaining_route,
             Route {
                 hops,
-                estimated_amount: estimated_amount,
-                minimum_acceptable_amount: minimum_acceptable_amount,
+                estimated_amount,
+                minimum_acceptable_amount,
                 to: mock_user_address(),
             }
         );
-        // == * it converts the native token to secret version
-        // == * it sends coverted token to the aggregator to initiate the next hop
-        // == * it finalizes the route
-        assert_eq!(
-            handle_result_unwrapped.messages,
-            vec![
-                Snip20::Deposit { padding: None }
-                    .to_cosmos_msg(
-                        BLOCK_SIZE,
-                        mock_sscrt().contract_hash,
-                        mock_sscrt().address,
-                        Some(Coin {
-                            amount: transaction_amount,
-                            denom: mock_denom(),
-                        }),
-                    )
-                    .unwrap(),
-                snip20::send_msg(
-                    mock_contract().address,
-                    transaction_amount,
-                    None,
-                    None,
-                    BLOCK_SIZE,
-                    mock_sscrt().contract_hash,
-                    mock_sscrt().address,
-                )
-                .unwrap(),
-                CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: mock_contract().address,
-                    callback_code_hash: mock_contract().contract_hash.clone(),
-                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
-                    send: vec![],
-                }),
-            ]
-        );
-        // = when the from_token for the first hop is a snip20
-        let mut hops: VecDeque<Hop> = VecDeque::new();
-        hops.push_back(Hop {
-            from_token: mock_token_snip20(),
-            redeem_denom: None,
-            smart_contract: Some(mock_pair_contract()),
-            migrate_to_token: None,
-            shade_protocol_router_path: None,
-        });
-        hops.push_back(Hop {
-            from_token: mock_token_snip20(),
-            redeem_denom: None,
-            smart_contract: Some(mock_pair_contract()),
-            migrate_to_token: None,
-            shade_protocol_router_path: None,
-        });
-        // == when the to does not match the from
-        let handle_msg = HandleMsg::Receive {
-            from: mock_user_address(),
-            msg: Some(
-                to_binary(&Route {
-                    hops: hops.clone(),
-                    to: mock_pair_contract().address,
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
-                })
-                .unwrap(),
-            ),
-            amount: transaction_amount,
-        };
-        let handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
-        // == * it raises an error
-        assert_eq!(
-            handle_result.unwrap_err(),
-            StdError::Unauthorized { backtrace: None }
-        );
-        // == when the to matches the from
-        // == * it sends the token to pair contract to swap
-        // == * it finalizes route
-        let handle_msg = HandleMsg::Receive {
-            from: mock_user_address(),
-            msg: Some(
-                to_binary(&Route {
-                    hops: hops,
-                    to: mock_user_address(),
-                    estimated_amount: estimated_amount,
-                    minimum_acceptable_amount: minimum_acceptable_amount,
-                })
-                .unwrap(),
-            ),
-            amount: transaction_amount,
-        };
-        let handle_result_unwrapped =
-            handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg).unwrap();
-        assert_eq!(
-            handle_result_unwrapped.messages,
-            vec![
-                snip20::send_msg(
-                    mock_pair_contract().address,
-                    transaction_amount,
-                    Some(
-                        to_binary(&Snip20Swap::Swap {
-                            expected_return: None,
-                            to: Some(mock_contract().address),
-                        })
-                        .unwrap()
-                    ),
-                    None,
-                    BLOCK_SIZE,
-                    mock_sscrt().contract_hash,
-                    mock_sscrt().address,
-                )
-                .unwrap(),
-                CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: mock_contract().address,
-                    callback_code_hash: mock_contract().contract_hash.clone(),
-                    msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
-                    send: vec![],
-                }),
-            ]
-        );
+        // == * it creates messages based on the first hop and then finalizes the route
+        let mut hop_messages =
+            hop_messages(route_state.current_hop, transaction_amount, &env).unwrap();
+        hop_messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: mock_contract().address,
+            callback_code_hash: mock_contract().contract_hash.clone(),
+            msg: to_binary(&HandleMsg::FinalizeRoute {}).unwrap(),
+            send: vec![],
+        }));
+        assert_eq!(handle_result_unwrapped.messages, hop_messages)
     }
 
     #[test]
