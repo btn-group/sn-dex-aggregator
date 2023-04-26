@@ -1,4 +1,7 @@
-use crate::authorize::{authorize, validate_received_token, validate_user_is_the_receiver};
+use crate::authorize::{
+    authorize, validate_received_from_an_allowed_address, validate_received_token,
+    validate_user_is_the_receiver,
+};
 use crate::constants::{BLOCK_SIZE, CONFIG_KEY};
 use crate::{
     msg::{HandleMsg, InitMsg, ShadeProtocol, Snip20, Snip20Swap},
@@ -285,42 +288,12 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
             validate_received_token(next_hop.from_token.clone(), amount, env)?;
 
             // ### CHECKED
-            // validate received from an allowed address
-            match next_hop.clone().from_token {
-                Token::Snip20(SecretContract {
-                    address,
-                    contract_hash: _,
-                }) => {
-                    // Authorize
-                    authorize(env.message.sender.clone(), address)?;
-
-                    match current_hop {
-                        Some(Hop {
-                            ref smart_contract,
-                            ref redeem_denom,
-                            ref migrate_to_token,
-                            shade_protocol_router_path: _,
-                            ..
-                        }) => {
-                            // 1. wrapped (redeem_denom present) - from must be from this contract
-                            // 2. from migration contract - from must be from this contract
-                            // 3. shade_protocol_router_path - from must be current_hop smart contract
-                            if redeem_denom.is_some() {
-                                authorize(env.contract.address.clone(), from)?;
-                            } else if migrate_to_token.is_some() {
-                                authorize(env.contract.address.clone(), from)?;
-                            } else if smart_contract.is_some() {
-                                authorize(smart_contract.clone().unwrap().address, from)?;
-                            }
-                        }
-                        None => todo!(),
-                    }
-                }
-                Token::Native(_) => {
-                    // Native token in handle_hop can only be from the contract
-                    authorize(env.message.sender.clone(), env.contract.address.clone())?;
-                }
-            };
+            validate_received_from_an_allowed_address(
+                current_hop.clone().unwrap(),
+                next_hop.clone(),
+                env,
+                from,
+            )?;
 
             let mut messages = vec![];
             if hops.is_empty() {
