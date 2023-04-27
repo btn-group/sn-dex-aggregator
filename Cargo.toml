@@ -1,6 +1,6 @@
 [package]
 name = "cw-sn-dex-aggregator"
-version = "4.0.0"
+version = "5.0.0"
 description = "DEX aggregator smart contract for the Secret network."
 repository = "https://github.com/btn-group/sn-dex-aggregator"
 authors = ["Steven Chang <steven.chang@btn.group>"]
