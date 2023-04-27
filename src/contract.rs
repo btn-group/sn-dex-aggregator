@@ -11,8 +11,9 @@ use crate::{
     },
 };
 use cosmwasm_std::{
-    from_binary, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern, HandleResponse,
-    HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
+    from_binary, log, to_binary, Api, BankMsg, Binary, Coin, CosmosMsg, Env, Extern,
+    HandleResponse, HumanAddr, InitResponse, Querier, StdError, StdResult, Storage, Uint128,
+    WasmMsg,
 };
 use secret_toolkit::snip20;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
@@ -226,9 +227,10 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
     from: HumanAddr,
-    amount: Uint128,
+    mut amount: Uint128,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    let mut logs = vec![];
     match read_route_state(&deps.storage)? {
         Some(RouteState {
             current_hop,
@@ -287,8 +289,9 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             }));
                         }
                     };
+                    amount = estimated_amount;
                 }
-                // Send estimate amount to user
+                // Send amount to user
                 match next_hop.clone().from_token {
                     Token::Snip20(SecretContract {
                         address,
@@ -296,7 +299,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                     }) => {
                         messages.push(snip20::send_msg(
                             to.clone(),
-                            estimated_amount,
+                            amount,
                             None,
                             None,
                             BLOCK_SIZE,
@@ -309,12 +312,13 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
                             from_address: env.contract.address.clone(),
                             to_address: to.clone(),
                             amount: vec![Coin {
-                                amount: estimated_amount,
+                                amount,
                                 denom: current_hop.redeem_denom.unwrap(),
                             }],
                         }));
                     }
                 };
+                logs = vec![log("return_amount", amount.to_string())];
             } else {
                 messages = hop_messages(next_hop.clone(), amount, env)?;
             }
@@ -333,7 +337,7 @@ fn handle_hop<S: Storage, A: Api, Q: Querier>(
 
             Ok(HandleResponse {
                 messages,
-                log: vec![],
+                log: logs,
                 data: None,
             })
         }
@@ -917,12 +921,12 @@ mod tests {
             StdError::generic_err("Operation fell short of minimum_acceptable_amount")
         );
         // ===== when last token is a snip20
-        // ====== when the amount is equal to the estimated amount
-        // ====== * it transfers the estimated amount to the user
+        // ====== when the amount is equal to or less than the estimated amount
+        // ====== * it transfers the received amount to the user
         handle_msg = HandleMsg::Receive {
             from: mock_pair_contract_two().address,
             msg: None,
-            amount: estimated_amount,
+            amount: (estimated_amount - Uint128(1)).unwrap(),
         };
         handle_result = handle(&mut deps, mock_env(mock_sscrt().address, &[]), handle_msg);
         handle_result_unwrapped = handle_result.unwrap();
@@ -930,7 +934,7 @@ mod tests {
             handle_result_unwrapped.messages,
             vec![snip20::send_msg(
                 route_state.remaining_route.to,
-                estimated_amount,
+                (estimated_amount - Uint128(1)).unwrap(),
                 None,
                 None,
                 BLOCK_SIZE,
@@ -939,9 +943,18 @@ mod tests {
             )
             .unwrap()]
         );
+        // ====== * it logs the return amount
+        assert_eq!(
+            handle_result_unwrapped.log,
+            vec![log(
+                "return_amount",
+                (estimated_amount - Uint128(1)).unwrap().to_string()
+            )]
+        );
+
         // ===== when the amount is greater than the estimated amount
         // ===== * it sends any excess to the admin
-        // ===== * it transfers the estimated amount to the user
+        // ===== * it transfers the received amount - the excess amount to the user
         store_route_state(
             &mut deps.storage,
             &RouteState {
@@ -992,6 +1005,11 @@ mod tests {
                 .unwrap(),
             ]
         );
+        // ====== * it logs the return amount
+        assert_eq!(
+            handle_result_unwrapped.log,
+            vec![log("return_amount", estimated_amount.to_string())]
+        );
         // ===== when last token is a native token
         hops = VecDeque::new();
         hops.push_back(Hop {
@@ -1020,8 +1038,8 @@ mod tests {
             },
         )
         .unwrap();
-        // ====== when the amount is equal to the estimated amount
-        // ====== * it transfers the estimated amount to the user
+        // ====== when the amount is equal to or less than the estimated amount
+        // ====== * it transfers the received amount to the user
         handle_msg = HandleMsg::Receive {
             from: env.contract.address.clone(),
             msg: None,
@@ -1050,9 +1068,13 @@ mod tests {
                 }],
             })]
         );
+        assert_eq!(
+            handle_result_unwrapped.log,
+            vec![log("return_amount", estimated_amount.to_string())]
+        );
         // ===== when the amount is greater than the estimated amount
         // ===== * it sends any excess to the admin
-        // ===== * it transfers the estimated amount to the user
+        // ===== * it transfers the received amount - the excess amount to the user
         hops = VecDeque::new();
         hops.push_back(Hop {
             from_token: mock_token_native(),
@@ -1117,6 +1139,10 @@ mod tests {
                     }],
                 })
             ]
+        );
+        assert_eq!(
+            handle_result_unwrapped.log,
+            vec![log("return_amount", estimated_amount.to_string())]
         );
     }
 
