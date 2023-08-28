@@ -1,3 +1,9 @@
+> :warning: **Warning**
+> <br>
+> This repository was archived as it was getting dependabot alerts for libsecp256k1.
+> <br>
+> If you would like to use, please upgrade cargo packages as required first.
+
 # Secret network DEX aggregator V5
 
 ## How it works
